@@ -1,0 +1,503 @@
+'use client';
+
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Player, Team, Difficulty, GameMode, Challenge } from '@/lib/types';
+import { BOARD_SIZE, FOREST_CHARACTERS, FOREST_COLORS, TIME_LIMITS, generateRandomChallengeCells } from '@/lib/game-config';
+import { generateChallenge, selectRandomChallenges, generateSpecificChallenge, PredefinedChallenge } from '@/lib/challenge-generator';
+
+export function useGame() {
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
+  const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
+  const [currentTeamPlayerIndex, setCurrentTeamPlayerIndex] = useState(0);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [diceRolled, setDiceRolled] = useState(false);
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium');
+  const [gameMode, setGameMode] = useState<GameMode>('individual');
+  const [timeLimitEnabled, setTimeLimitEnabled] = useState(false);
+  const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState(60);
+  const [diceValue, setDiceValue] = useState<number | null>(null);
+  const [challengeCells, setChallengeCells] = useState<number[]>([]);
+  
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const challengeCellsRef = useRef<number[]>([]);
+  // Mapeo de casilla de desafío -> reto predefinido
+  const challengeMapRef = useRef<Map<number, PredefinedChallenge>>(new Map());
+  const playersRef = useRef<Player[]>([]);
+  const teamsRef = useRef<Team[]>([]);
+  const currentPlayerIndexRef = useRef(0);
+  const currentTeamIndexRef = useRef(0);
+  const currentTeamPlayerIndexRef = useRef(0);
+  const gameModeRef = useRef<GameMode>('individual');
+  const isMovingPlayerRef = useRef(false);
+  const movePlayerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sincronizar refs con state
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
+
+  useEffect(() => {
+    teamsRef.current = teams;
+  }, [teams]);
+
+  useEffect(() => {
+    currentPlayerIndexRef.current = currentPlayerIndex;
+  }, [currentPlayerIndex]);
+
+  useEffect(() => {
+    currentTeamIndexRef.current = currentTeamIndex;
+  }, [currentTeamIndex]);
+
+  useEffect(() => {
+    currentTeamPlayerIndexRef.current = currentTeamPlayerIndex;
+  }, [currentTeamPlayerIndex]);
+
+  useEffect(() => {
+    gameModeRef.current = gameMode;
+  }, [gameMode]);
+
+  // IMPORTANTE: Sincronizar challengeCellsRef con challengeCells state
+  useEffect(() => {
+    challengeCellsRef.current = challengeCells;
+  }, [challengeCells]);
+
+  const nextTurn = useCallback(() => {
+    setDiceRolled(false);
+    setDiceValue(null);
+    // Resetear el flag de movimiento cuando cambia el turno
+    isMovingPlayerRef.current = false;
+    // Limpiar cualquier timeout pendiente
+    if (movePlayerTimeoutRef.current) {
+      clearTimeout(movePlayerTimeoutRef.current);
+      movePlayerTimeoutRef.current = null;
+    }
+
+    if (gameModeRef.current === 'teams') {
+      // Modo equipos: usar refs para obtener valores actuales
+      const currentTeams = teamsRef.current;
+      const currentTeamIdx = currentTeamIndexRef.current;
+      const currentPlayerIdx = currentTeamPlayerIndexRef.current;
+      
+      const currentTeam = currentTeams[currentTeamIdx];
+      if (!currentTeam) return;
+
+      const newPlayerIndex = currentPlayerIdx + 1;
+      
+      if (newPlayerIndex < currentTeam.players.length) {
+        // Hay más jugadores en el equipo actual, avanzar al siguiente
+        setCurrentTeamPlayerIndex(newPlayerIndex);
+      } else {
+        // No hay más jugadores, cambiar al siguiente equipo
+        const nextTeamIndex = (currentTeamIdx + 1) % currentTeams.length;
+        setCurrentTeamIndex(nextTeamIndex);
+        setCurrentTeamPlayerIndex(0);
+      }
+    } else {
+      // Modo individual: avanzar al siguiente jugador circularmente
+      const currentPlayers = playersRef.current;
+      const currentIdx = currentPlayerIndexRef.current;
+      const nextIndex = (currentIdx + 1) % currentPlayers.length;
+      setCurrentPlayerIndex(nextIndex);
+    }
+  }, []);
+
+  const movePlayer = useCallback((steps: number) => {
+    // IMPORTANTE: steps debe ser el valor exacto del dado (1-6)
+    // No debe duplicarse ni modificarse
+    // Validar que steps esté en el rango válido
+    if (steps < 1 || steps > 6) {
+      console.warn(`Valor de dado inválido: ${steps}`);
+      return;
+    }
+    
+    // Prevenir múltiples ejecuciones simultáneas
+    if (isMovingPlayerRef.current) {
+      console.warn('movePlayer ya está en ejecución, ignorando llamada duplicada');
+      return;
+    }
+    
+    isMovingPlayerRef.current = true;
+    
+    // Limpiar cualquier timeout pendiente de movePlayer
+    if (movePlayerTimeoutRef.current) {
+      clearTimeout(movePlayerTimeoutRef.current);
+      movePlayerTimeoutRef.current = null;
+    }
+    
+    setPlayers(prevPlayers => {
+      // Crear una copia profunda del array de jugadores
+      const updatedPlayers = prevPlayers.map(p => ({ ...p }));
+      let newPosition = 0;
+
+      // Usar refs para obtener valores actuales
+      const mode = gameModeRef.current;
+      const currentTeams = teamsRef.current;
+      const currentTeamIdx = currentTeamIndexRef.current;
+      const currentPlayerIdx = currentTeamPlayerIndexRef.current;
+      const currentPlayerIdxIndividual = currentPlayerIndexRef.current;
+
+      if (mode === 'teams') {
+        // Obtener el jugador actual del equipo
+        const currentTeam = currentTeams[currentTeamIdx];
+        if (!currentTeam) return prevPlayers;
+        
+        const currentPlayer = currentTeam.players[currentPlayerIdx];
+        if (!currentPlayer) return prevPlayers;
+
+        const playerIndex = updatedPlayers.findIndex(p => p.id === currentPlayer.id);
+        if (playerIndex === -1) return prevPlayers;
+
+        // Obtener la posición ACTUAL del jugador desde el estado previo
+        const oldPosition = prevPlayers[playerIndex]?.position ?? updatedPlayers[playerIndex].position;
+        // Calcular nueva posición: posición actual + pasos del dado
+        // Si está en 0 y steps=2, newPosition = 0 + 2 = 2 (no 4)
+        newPosition = Math.min(oldPosition + steps, BOARD_SIZE - 1);
+        updatedPlayers[playerIndex].position = newPosition;
+
+        // Actualizar posición del equipo
+        setTeams(prevTeams => {
+          const updatedTeams = [...prevTeams];
+          const team = updatedTeams[currentTeamIdx];
+          if (team && team.players.length > 0) {
+            const totalPosition = team.players.reduce((sum, p) => {
+              const player = updatedPlayers.find(pl => pl.id === p.id);
+              return sum + (player?.position || 0);
+            }, 0);
+            team.position = Math.floor(totalPosition / team.players.length);
+          }
+          return updatedTeams;
+        });
+      } else {
+        // Modo individual
+        // Validar que el índice del jugador sea válido
+        if (currentPlayerIdxIndividual < 0 || currentPlayerIdxIndividual >= updatedPlayers.length) {
+          return prevPlayers;
+        }
+        
+        const currentPlayer = updatedPlayers[currentPlayerIdxIndividual];
+        if (!currentPlayer) return prevPlayers;
+
+        // IMPORTANTE: Obtener la posición ACTUAL del jugador desde el estado previo (prevPlayers)
+        // No usar updatedPlayers porque podría tener una posición ya modificada
+        const oldPosition = prevPlayers[currentPlayerIdxIndividual]?.position ?? 0;
+        
+        // Calcular la nueva posición: posición actual + pasos del dado
+        // Ejemplo: si está en 0 y saca 2, debe ir a 0 + 2 = 2 (exactamente 2 pasos)
+        newPosition = Math.min(oldPosition + steps, BOARD_SIZE - 1);
+        
+        // Actualizar la posición del jugador
+        updatedPlayers[currentPlayerIdxIndividual].position = newPosition;
+      }
+
+      // Verificar si ganó (si está en la última casilla, no mostrar desafío)
+      if (newPosition >= BOARD_SIZE - 1) {
+        // El jugador ganó, cambiar de turno para verificar la victoria
+        setTimeout(() => {
+          isMovingPlayerRef.current = false;
+          nextTurn();
+        }, 1000);
+        return updatedPlayers;
+      }
+
+      // IMPORTANTE: Solo activar desafío si el jugador TERMINA en una casilla de desafío
+      // Verificar DESPUÉS de actualizar la posición
+      const challengeCells = challengeCellsRef.current;
+      const isOnChallengeCell = challengeCells.includes(newPosition);
+
+      if (isOnChallengeCell) {
+        // El jugador terminó en una casilla de desafío - activar desafío
+        setTimeout(() => {
+          isMovingPlayerRef.current = false;
+          // Obtener el reto predefinido asignado a esta casilla
+          const predefinedChallenge = challengeMapRef.current.get(newPosition);
+          if (predefinedChallenge) {
+            // Generar el desafío específico con variabilidad interna
+            const challenge = generateSpecificChallenge(predefinedChallenge, difficulty);
+            setCurrentChallenge(challenge);
+          } else {
+            // Fallback: usar generación aleatoria si no hay reto asignado
+            const challenge = generateChallenge(difficulty);
+            setCurrentChallenge(challenge);
+          }
+        }, 800);
+      } else {
+        // El jugador NO terminó en una casilla de desafío - cambiar de turno
+        setTimeout(() => {
+          isMovingPlayerRef.current = false;
+          nextTurn();
+        }, 1000);
+      }
+
+      return updatedPlayers;
+    });
+  }, [difficulty, nextTurn]);
+
+  const rollDice = useCallback(() => {
+    if (diceRolled || !gameStarted || isMovingPlayerRef.current) return;
+    
+    // Primero establecer el dado como "rodando" sin valor
+    setDiceValue(null);
+    setDiceRolled(true);
+    
+    // Generar el valor pero no mostrarlo aún
+    const value = Math.floor(Math.random() * 6) + 1;
+    
+    // Después de la animación del dado (2 segundos), establecer el valor
+    setTimeout(() => {
+      setDiceValue(value);
+      // Mover al jugador después de un breve delay para mostrar el valor
+      // Asegurar que solo se llame una vez usando un timeout único
+      if (movePlayerTimeoutRef.current) {
+        clearTimeout(movePlayerTimeoutRef.current);
+      }
+      movePlayerTimeoutRef.current = setTimeout(() => {
+        movePlayer(value);
+        movePlayerTimeoutRef.current = null;
+      }, 500);
+    }, 2000);
+  }, [diceRolled, gameStarted, movePlayer]);
+
+  const startGame = useCallback((
+    playerCount: number,
+    difficultyLevel: Difficulty,
+    mode: GameMode,
+    timeLimit: boolean,
+    playerCharacters: string[] = []
+  ) => {
+    // Generar posiciones aleatorias para los desafíos
+    const randomChallengeCells = generateRandomChallengeCells(5, BOARD_SIZE);
+    setChallengeCells(randomChallengeCells);
+    challengeCellsRef.current = randomChallengeCells;
+    
+    // Seleccionar 5 retos aleatorios de los 20 predefinidos
+    const selectedChallenges = selectRandomChallenges(5);
+    
+    // Crear mapeo de casilla -> reto predefinido
+    const challengeMap = new Map<number, PredefinedChallenge>();
+    randomChallengeCells.forEach((cell, index) => {
+      challengeMap.set(cell, selectedChallenges[index]);
+    });
+    challengeMapRef.current = challengeMap;
+
+    const newPlayers: Player[] = [];
+    for (let i = 0; i < playerCount; i++) {
+      const characterEmoji = playerCharacters[i] || FOREST_CHARACTERS[i % FOREST_CHARACTERS.length].emoji;
+      const character = FOREST_CHARACTERS.find(c => c.emoji === characterEmoji) || FOREST_CHARACTERS[i % FOREST_CHARACTERS.length];
+      
+      newPlayers.push({
+        id: i + 1,
+        name: `${character.name}`,
+        position: 0,
+        color: character.color,
+        icon: character.emoji,
+        team: null,
+      });
+    }
+
+    setPlayers(newPlayers);
+    setDifficulty(difficultyLevel);
+    setGameMode(mode);
+    setTimeLimitEnabled(timeLimit);
+
+    if (mode === 'teams') {
+      const teamNames = ['Equipo Verde', 'Equipo Esmeralda'];
+      const teamColors = [FOREST_COLORS[1], FOREST_COLORS[3]];
+      const newTeams: Team[] = [];
+
+      for (let i = 0; i < 2; i++) {
+        const teamPlayers: Player[] = [];
+        for (let j = i; j < playerCount; j += 2) {
+          newPlayers[j].team = i;
+          teamPlayers.push(newPlayers[j]);
+        }
+
+        newTeams.push({
+          id: i,
+          name: teamNames[i],
+          color: teamColors[i],
+          players: teamPlayers,
+          position: 0,
+        });
+      }
+
+      setTeams(newTeams);
+      setCurrentTeamIndex(0);
+      setCurrentTeamPlayerIndex(0);
+    } else {
+      setTeams([]);
+      setCurrentPlayerIndex(0);
+    }
+
+    setGameStarted(true);
+    setDiceRolled(false);
+  }, []);
+
+  const startChallengeTimer = useCallback(() => {
+    if (!timeLimitEnabled) return;
+
+    const timeLimit = TIME_LIMITS[difficulty];
+    setTimeRemaining(timeLimit);
+
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    timerRef.current = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 0) {
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [timeLimitEnabled, difficulty]);
+
+  useEffect(() => {
+    if (currentChallenge && timeLimitEnabled) {
+      startChallengeTimer();
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [currentChallenge, timeLimitEnabled, startChallengeTimer]);
+
+  const getCurrentPlayer = useCallback((): Player | null => {
+    if (!gameStarted) return null;
+    
+    if (gameMode === 'teams') {
+      const currentTeam = teams[currentTeamIndex];
+      if (!currentTeam) return null;
+      return currentTeam.players[currentTeamPlayerIndex] || null;
+    } else {
+      return players[currentPlayerIndex] || null;
+    }
+  }, [gameStarted, gameMode, teams, currentTeamIndex, currentTeamPlayerIndex, players, currentPlayerIndex]);
+
+  const closeChallenge = useCallback(() => {
+    setCurrentChallenge(null);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const completeChallenge = useCallback((success: boolean) => {
+    // Cerrar el desafío actual primero
+    closeChallenge();
+    
+    if (success) {
+      // Obtener el jugador actual antes de actualizar
+      const currentPlayer = getCurrentPlayer();
+      if (!currentPlayer) {
+        setTimeout(() => {
+          nextTurn();
+        }, 300);
+        return;
+      }
+
+      setPlayers(prevPlayers => {
+        // Crear una copia profunda del array de jugadores
+        const updatedPlayers = prevPlayers.map(p => ({ ...p }));
+        const playerIndex = updatedPlayers.findIndex(p => p.id === currentPlayer.id);
+        if (playerIndex === -1) {
+          setTimeout(() => {
+            nextTurn();
+          }, 300);
+          return prevPlayers;
+        }
+
+        // IMPORTANTE: Obtener la posición ACTUAL del jugador desde el estado previo (prevPlayers)
+        // No usar updatedPlayers porque podría tener una posición ya modificada
+        const oldPosition = prevPlayers[playerIndex]?.position ?? 0;
+        const newPosition = Math.min(
+          oldPosition + 1,
+          BOARD_SIZE - 1
+        );
+        
+        // Actualizar la posición del jugador
+        updatedPlayers[playerIndex].position = newPosition;
+
+        // Verificar si ganó
+        if (newPosition >= BOARD_SIZE - 1) {
+          // El jugador ganó, no mostrar más desafíos
+          setTimeout(() => {
+            nextTurn();
+          }, 500);
+          return updatedPlayers;
+        }
+
+        // IMPORTANTE: Solo activar un nuevo desafío si el jugador TERMINA en una casilla de desafío
+        // después de recibir el bonus de 1 espacio
+        // Usar una copia del array para evitar problemas de referencia
+        const challengeCells = [...challengeCellsRef.current];
+        const isOnChallengeCell = challengeCells.includes(newPosition) && newPosition > 0 && newPosition < BOARD_SIZE - 1;
+
+        if (isOnChallengeCell) {
+          // La nueva posición después del bonus ES una casilla de desafío - activar nuevo desafío
+          setTimeout(() => {
+            // Verificar nuevamente antes de activar el desafío (doble verificación)
+            if (challengeCellsRef.current.includes(newPosition)) {
+              // Obtener el reto predefinido asignado a esta casilla
+              const predefinedChallenge = challengeMapRef.current.get(newPosition);
+              if (predefinedChallenge) {
+                // Generar el desafío específico con variabilidad interna
+                const challenge = generateSpecificChallenge(predefinedChallenge, difficulty);
+                setCurrentChallenge(challenge);
+              } else {
+                // Fallback: usar generación aleatoria si no hay reto asignado
+                const challenge = generateChallenge(difficulty);
+                setCurrentChallenge(challenge);
+              }
+            } else {
+              // Si por alguna razón ya no está en una casilla de desafío, cambiar de turno
+              nextTurn();
+            }
+          }, 600);
+        } else {
+          // La nueva posición después del bonus NO es una casilla de desafío - cambiar de turno
+          setTimeout(() => {
+            nextTurn();
+          }, 500);
+        }
+        
+        return updatedPlayers;
+      });
+    } else {
+      // Si el desafío falló, cambiar de turno inmediatamente
+      setTimeout(() => {
+        nextTurn();
+      }, 300);
+    }
+  }, [getCurrentPlayer, closeChallenge, nextTurn, difficulty]);
+
+  return {
+    players,
+    teams,
+    currentPlayer: getCurrentPlayer(),
+    currentPlayerIndex,
+    currentTeamIndex,
+    gameStarted,
+    diceRolled,
+    diceValue,
+    difficulty,
+    gameMode,
+    timeLimitEnabled,
+    currentChallenge,
+    timeRemaining,
+    challengeCells,
+    startGame,
+    rollDice,
+    nextTurn,
+    closeChallenge,
+    completeChallenge,
+  };
+}
