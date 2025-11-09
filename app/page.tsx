@@ -12,7 +12,6 @@ import { BOARD_SIZE } from '@/lib/game-config';
 import { Player, Team } from '@/lib/types';
 import { toast } from 'sonner';
 import { Dice3D } from '@/components/game/Dice3D';
-import { playTeamVictorySound, preloadAllSounds } from '@/lib/animal-sounds';
 
 export default function Home() {
   const game = useGame();
@@ -20,11 +19,6 @@ export default function Home() {
   const [winner, setWinner] = useState<Player | Team | null>(null);
   const [isDiceRolling, setIsDiceRolling] = useState(false);
   const [showRestartModal, setShowRestartModal] = useState(false);
-
-  // Precargar todos los sonidos cuando se monta el componente
-  useEffect(() => {
-    preloadAllSounds();
-  }, []);
 
   useEffect(() => {
     // Verificar si alguien ganó
@@ -39,27 +33,12 @@ export default function Home() {
         if (winningTeam) {
           setWinner(winningTeam);
           setShowWinModal(true);
-          // Reproducir sonido de victoria del equipo
-          const mainAnimal = winningTeam.players[0];
-          if (mainAnimal) {
-            try {
-              playTeamVictorySound(mainAnimal.icon);
-            } catch (error) {
-              console.log('No se pudo reproducir el sonido de victoria:', error);
-            }
-          }
         }
       } else {
         const winningPlayer = game.players.find(p => p.position >= BOARD_SIZE - 1);
         if (winningPlayer) {
           setWinner(winningPlayer);
           setShowWinModal(true);
-          // Reproducir sonido de victoria del animal
-          try {
-            playTeamVictorySound(winningPlayer.icon);
-          } catch (error) {
-            console.log('No se pudo reproducir el sonido de victoria:', error);
-          }
         }
       }
     }

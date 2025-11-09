@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Player, Team, Difficulty, GameMode, Challenge } from '@/lib/types';
 import { BOARD_SIZE, FOREST_CHARACTERS, FOREST_COLORS, generateRandomChallengeCells } from '@/lib/game-config';
-import { playAnimalSound, playTeamVictorySound } from '@/lib/animal-sounds';
 import { generateChallenge, selectRandomChallenges, generateSpecificChallenge, PredefinedChallenge } from '@/lib/challenge-generator';
 
 export function useGame() {
@@ -532,13 +531,6 @@ export function useGame() {
         return;
       }
       
-      // Reproducir sonido del animal cuando completa el desafío correctamente
-      try {
-        playAnimalSound(currentPlayer.icon);
-      } catch (error) {
-        // Si falla la reproducción de audio, continuar sin sonido
-        console.log('No se pudo reproducir el sonido:', error);
-      }
 
       setPlayers(prevPlayers => {
         // Crear una copia profunda del array de jugadores
