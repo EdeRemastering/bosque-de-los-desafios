@@ -32,6 +32,10 @@ export function ChallengeModal({
   const [availableItems, setAvailableItems] = useState<string[]>([]);
   const [draggedOption, setDraggedOption] = useState<string | null>(null);
   const [dropZoneHovered, setDropZoneHovered] = useState(false);
+  const [draggedItem, setDraggedItem] = useState<{item: string; source: 'available' | string} | null>(null);
+  const [hoveredDropZone, setHoveredDropZone] = useState<string | null>(null);
+  const [puzzleDraggedIndex, setPuzzleDraggedIndex] = useState<number | null>(null);
+  const [puzzleHoveredIndex, setPuzzleHoveredIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (challenge?.type === 'puzzle') {
@@ -47,6 +51,10 @@ export function ChallengeModal({
     setSelectedAnswer(null);
     setDraggedOption(null);
     setDropZoneHovered(false);
+    setDraggedItem(null);
+    setHoveredDropZone(null);
+    setPuzzleDraggedIndex(null);
+    setPuzzleHoveredIndex(null);
   }, [challenge]);
 
   if (!challenge) return null;
@@ -98,19 +106,74 @@ export function ChallengeModal({
       setAvailableItems(prev => prev.filter(i => i !== item));
     };
 
-    const handleRemoveFromCategory = (categoryName: string, item: string, index: number) => {
+    const handleReturnToAvailable = (item: string, sourceCategory: string) => {
       // Remover el item de la categoría
       setClassificationState(prev => {
-        const categoryItems = prev[categoryName] || [];
-        const newItems = categoryItems.filter((_, idx) => idx !== index);
-        return {
-          ...prev,
-          [categoryName]: newItems,
-        };
+        const categoryItems = prev[sourceCategory] || [];
+        const newItems = categoryItems.filter(i => i !== item);
+        const newState = { ...prev };
+        if (newItems.length > 0) {
+          newState[sourceCategory] = newItems;
+        } else {
+          delete newState[sourceCategory];
+        }
+        return newState;
       });
       
       // Agregar el item de vuelta a la lista de disponibles
       setAvailableItems(prev => [...prev, item]);
+    };
+
+    const handleDragStart = (e: React.DragEvent, item: string, source: 'available' | string) => {
+      e.dataTransfer.setData('item', item);
+      e.dataTransfer.setData('source', source);
+      e.dataTransfer.effectAllowed = 'move';
+      setDraggedItem({ item, source });
+      // Mejorar el feedback visual durante el arrastre
+      if (e.currentTarget instanceof HTMLElement) {
+        e.currentTarget.style.opacity = '0.5';
+      }
+    };
+
+    const handleDragEnd = (e: React.DragEvent) => {
+      setDraggedItem(null);
+      setHoveredDropZone(null);
+      if (e.currentTarget instanceof HTMLElement) {
+        e.currentTarget.style.opacity = '1';
+      }
+    };
+
+    const handleDragOver = (e: React.DragEvent, zoneId: string) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setHoveredDropZone(zoneId);
+    };
+
+    const handleDragLeave = () => {
+      setHoveredDropZone(null);
+    };
+
+    const handleDrop = (e: React.DragEvent, targetZone: 'available' | string) => {
+      e.preventDefault();
+      const item = e.dataTransfer.getData('item');
+      const source = e.dataTransfer.getData('source');
+      
+      // Si se arrastra desde disponible a una categoría
+      if (source === 'available' && targetZone !== 'available') {
+        handleItemDrop(targetZone, item);
+      }
+      // Si se arrastra desde una categoría de vuelta a disponible
+      else if (source !== 'available' && targetZone === 'available') {
+        handleReturnToAvailable(item, source);
+      }
+      // Si se arrastra de una categoría a otra categoría
+      else if (source !== 'available' && targetZone !== 'available' && source !== targetZone) {
+        handleReturnToAvailable(item, source);
+        handleItemDrop(targetZone, item);
+      }
+      
+      setDraggedItem(null);
+      setHoveredDropZone(null);
     };
 
     return (
@@ -122,25 +185,40 @@ export function ChallengeModal({
           <p className="text-center text-xs sm:text-sm text-green-700 font-semibold">
             📦 Objetos para clasificar:
           </p>
-          <div className="flex flex-wrap gap-2 sm:gap-3 justify-center p-3 sm:p-4 md:p-5 bg-green-100 rounded-lg border-2 border-green-300 min-h-[80px] sm:min-h-[100px] items-center">
+          <div 
+            className={cn(
+              "flex flex-wrap gap-2 sm:gap-3 justify-center p-3 sm:p-4 md:p-5 rounded-lg border-2 min-h-[80px] sm:min-h-[100px] items-center transition-all",
+              hoveredDropZone === 'available' 
+                ? "bg-green-200 border-green-600 border-solid shadow-lg scale-105" 
+                : "bg-green-100 border-green-300"
+            )}
+            onDragOver={(e) => handleDragOver(e, 'available')}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, 'available')}
+          >
             {availableItems.length > 0 ? (
               availableItems.map((item, idx) => (
                 <div
                   key={`${item}-${idx}`}
                   draggable
-                  className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg bg-white border-2 border-green-400 flex items-center justify-center text-2xl sm:text-3xl cursor-grab hover:scale-110 hover:border-green-600 hover:shadow-lg transition-all active:cursor-grabbing"
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('item', item);
-                    e.dataTransfer.effectAllowed = 'move';
-                  }}
+                  className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg bg-white border-2 border-green-400 flex items-center justify-center text-2xl sm:text-3xl cursor-grab hover:scale-110 hover:border-green-600 hover:shadow-lg transition-all active:cursor-grabbing touch-none"
+                  onDragStart={(e) => handleDragStart(e, item, 'available')}
+                  onDragEnd={handleDragEnd}
                 >
                   {item}
                 </div>
               ))
             ) : (
-              <p className="text-green-600 text-xs sm:text-sm italic">✅ Todos los objetos han sido clasificados</p>
+              <p className="text-green-600 text-xs sm:text-sm italic">
+                {hoveredDropZone === 'available' ? '💡 Suelta aquí para devolver' : '✅ Todos los objetos han sido clasificados'}
+              </p>
             )}
           </div>
+          {availableItems.length > 0 && (
+            <p className="text-xs text-green-600 text-center italic px-2">
+              💡 Arrastra los objetos a las categorías de abajo
+            </p>
+          )}
         </div>
         <div className="space-y-2 sm:space-y-3">
           <p className="text-center text-xs sm:text-sm text-green-700 font-semibold">
@@ -150,36 +228,37 @@ export function ChallengeModal({
             {categories.map((category) => (
               <div
                 key={category.name}
-                className="min-w-[120px] min-h-[120px] sm:min-w-[140px] sm:min-h-[140px] md:min-w-[150px] md:min-h-[150px] border-2 border-dashed border-green-400 rounded-lg p-2 sm:p-3 md:p-4 bg-green-50"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  e.currentTarget.classList.add('border-green-600', 'bg-green-100', 'shadow-lg');
-                }}
-                onDragLeave={(e) => {
-                  e.currentTarget.classList.remove('border-green-600', 'bg-green-100', 'shadow-lg');
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const item = e.dataTransfer.getData('item');
-                  handleItemDrop(category.name, item);
-                  e.currentTarget.classList.remove('border-green-600', 'bg-green-100', 'shadow-lg');
-                }}
+                className={cn(
+                  "min-w-[120px] min-h-[120px] sm:min-w-[140px] sm:min-h-[140px] md:min-w-[150px] md:min-h-[150px] border-2 rounded-lg p-2 sm:p-3 md:p-4 transition-all",
+                  hoveredDropZone === category.name
+                    ? "border-green-600 border-solid bg-green-200 shadow-lg scale-105"
+                    : "border-dashed border-green-400 bg-green-50"
+                )}
+                onDragOver={(e) => handleDragOver(e, category.name)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, category.name)}
               >
                 <div className="font-bold text-center mb-1 sm:mb-2 text-green-800 text-xs sm:text-sm md:text-base">
                   {category.label}
                 </div>
-                <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                <div className="flex flex-wrap gap-1.5 sm:gap-2 min-h-[60px]">
                   {(classificationState[category.name] || []).map((item, idx) => (
                     <div
                       key={`${category.name}-${idx}`}
-                      onClick={() => handleRemoveFromCategory(category.name, item, idx)}
-                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white border-2 border-green-300 flex items-center justify-center text-lg sm:text-xl md:text-2xl shadow-sm cursor-pointer hover:scale-110 hover:border-red-400 hover:bg-red-50 transition-all"
-                      title="Clic para devolver a la lista"
+                      draggable
+                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white border-2 border-green-400 flex items-center justify-center text-lg sm:text-xl md:text-2xl shadow-sm cursor-grab hover:scale-110 hover:border-green-600 hover:shadow-lg transition-all active:cursor-grabbing touch-none"
+                      onDragStart={(e) => handleDragStart(e, item, category.name)}
+                      onDragEnd={handleDragEnd}
+                      title="Arrastra para mover a otra categoría o devolver"
                     >
                       {item}
                     </div>
                   ))}
+                  {hoveredDropZone === category.name && (classificationState[category.name] || []).length === 0 && (
+                    <div className="w-full h-full flex items-center justify-center text-green-600 text-xs italic">
+                      💡 Suelta aquí
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -197,11 +276,26 @@ export function ChallengeModal({
     const questionMarkIndex = pattern.findIndex(item => item === '?');
     const displayedPattern = [...pattern];
 
-    // Manejar el inicio del arrastre
-    const handleDragStart = (e: React.DragEvent, option: string) => {
+    // Manejar el inicio del arrastre desde las opciones
+    const handleDragStartFromOptions = (e: React.DragEvent, option: string) => {
       e.dataTransfer.setData('text/plain', option);
+      e.dataTransfer.setData('source', 'options');
       e.dataTransfer.effectAllowed = 'move';
       setDraggedOption(option);
+      if (e.currentTarget instanceof HTMLElement) {
+        e.currentTarget.style.opacity = '0.5';
+      }
+    };
+
+    // Manejar el inicio del arrastre desde la respuesta seleccionada
+    const handleDragStartFromAnswer = (e: React.DragEvent, answer: string) => {
+      e.dataTransfer.setData('text/plain', answer);
+      e.dataTransfer.setData('source', 'answer');
+      e.dataTransfer.effectAllowed = 'move';
+      setDraggedOption(answer);
+      if (e.currentTarget instanceof HTMLElement) {
+        e.currentTarget.style.opacity = '0.5';
+      }
     };
 
     // Manejar cuando se arrastra sobre la zona de drop
@@ -220,9 +314,36 @@ export function ChallengeModal({
     const handleDrop = (e: React.DragEvent) => {
       e.preventDefault();
       const option = e.dataTransfer.getData('text/plain');
-      setSelectedAnswer(option);
+      const source = e.dataTransfer.getData('source');
+      
+      if (source === 'options' || source === 'answer') {
+        setSelectedAnswer(option);
+      }
+      
       setDraggedOption(null);
       setDropZoneHovered(false);
+    };
+
+    // Manejar cuando se suelta en la zona de opciones (para devolver la respuesta)
+    const handleDropOnOptions = (e: React.DragEvent) => {
+      e.preventDefault();
+      const source = e.dataTransfer.getData('source');
+      
+      if (source === 'answer') {
+        setSelectedAnswer(null);
+      }
+      
+      setDraggedOption(null);
+      setDropZoneHovered(false);
+    };
+
+    // Manejar el fin del arrastre
+    const handleDragEnd = (e: React.DragEvent) => {
+      setDraggedOption(null);
+      setDropZoneHovered(false);
+      if (e.currentTarget instanceof HTMLElement) {
+        e.currentTarget.style.opacity = '1';
+      }
     };
 
     // Reemplazar "?" con la respuesta seleccionada si existe
@@ -232,40 +353,72 @@ export function ChallengeModal({
 
     return (
       <div className="space-y-3 sm:space-y-4 md:space-y-6">
-        <p className="text-center text-sm sm:text-base md:text-lg font-semibold px-2">
+        <p className="text-center text-sm sm:text-base md:text-lg font-semibold text-green-800 px-2">
           Arrastra el número correcto para completar la secuencia
         </p>
-        <div className="flex gap-2 sm:gap-3 md:gap-4 justify-center flex-wrap p-2 sm:p-3 md:p-4 bg-green-50 rounded-lg border-2 border-green-300">
-          {displayedPattern.map((item, idx) => {
-            const isDropZone = idx === questionMarkIndex && !selectedAnswer;
-            return (
-              <div
-                key={idx}
-                onDragOver={isDropZone ? handleDragOver : undefined}
-                onDragLeave={isDropZone ? handleDragLeave : undefined}
-                onDrop={isDropZone ? handleDrop : undefined}
-                className={cn(
-                  'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white shadow-sm transition-all',
-                  isDropZone
-                    ? cn(
-                        'border-green-600 border-dashed cursor-pointer',
-                        dropZoneHovered 
-                          ? 'bg-green-100 scale-110 border-green-700 shadow-lg' 
-                          : 'animate-pulse'
-                      )
-                    : 'border-green-500'
-                )}
-              >
-                {item}
-              </div>
-            );
-          })}
+        <div className="space-y-2">
+          <p className="text-center text-xs sm:text-sm text-green-700 font-semibold">
+            🔢 Secuencia:
+          </p>
+          <div className="flex gap-2 sm:gap-3 md:gap-4 justify-center flex-wrap p-2 sm:p-3 md:p-4 bg-green-50 rounded-lg border-2 border-green-300">
+            {displayedPattern.map((item, idx) => {
+              const isDropZone = idx === questionMarkIndex;
+              const isSelectedCell = selectedAnswer && idx === questionMarkIndex;
+              return (
+                <div
+                  key={idx}
+                  draggable={!!isSelectedCell}
+                  onDragStart={isSelectedCell ? (e) => handleDragStartFromAnswer(e, selectedAnswer) : undefined}
+                  onDragEnd={isSelectedCell ? handleDragEnd : undefined}
+                  onDragOver={isDropZone ? handleDragOver : undefined}
+                  onDragLeave={isDropZone ? handleDragLeave : undefined}
+                  onDrop={isDropZone ? handleDrop : undefined}
+                  className={cn(
+                    'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white shadow-sm transition-all touch-none',
+                    isDropZone && !selectedAnswer
+                      ? cn(
+                          'border-green-600 border-dashed',
+                          dropZoneHovered 
+                            ? 'bg-green-200 scale-110 border-green-700 border-solid shadow-lg' 
+                            : 'animate-pulse bg-green-100'
+                        )
+                      : isSelectedCell
+                      ? 'border-green-600 bg-green-100 cursor-grab hover:scale-110 hover:shadow-lg active:cursor-grabbing'
+                      : 'border-green-500'
+                  )}
+                  title={isSelectedCell ? 'Arrastra para cambiar la respuesta' : isDropZone ? 'Arrastra un número aquí' : undefined}
+                >
+                  {item}
+                </div>
+              );
+            })}
+          </div>
         </div>
         <div className="space-y-2">
           <p className="text-center text-xs sm:text-sm text-green-700 font-semibold">
-            {selectedAnswer ? '✅ Respuesta seleccionada' : '📦 Arrastra una opción aquí 👆'}
+            {selectedAnswer ? '✅ Respuesta seleccionada - Arrastra para cambiarla' : '📦 Arrastra una opción a la secuencia 👆'}
           </p>
-          <div className="flex gap-2 sm:gap-3 md:gap-4 justify-center flex-wrap p-3 sm:p-4 md:p-5 bg-green-100 rounded-lg border-2 border-green-300">
+          <div 
+            className={cn(
+              "flex gap-2 sm:gap-3 md:gap-4 justify-center flex-wrap p-3 sm:p-4 md:p-5 rounded-lg border-2 transition-all",
+              dropZoneHovered && draggedOption && !options.includes(draggedOption)
+                ? "bg-green-200 border-green-600 border-solid shadow-lg"
+                : "bg-green-100 border-green-300"
+            )}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (selectedAnswer) {
+                e.dataTransfer.dropEffect = 'move';
+                setDropZoneHovered(true);
+              }
+            }}
+            onDragLeave={() => {
+              if (selectedAnswer) {
+                setDropZoneHovered(false);
+              }
+            }}
+            onDrop={handleDropOnOptions}
+          >
             {options.map((option, idx) => {
               const isSelected = selectedAnswer === option;
               const isDragging = draggedOption === option;
@@ -273,16 +426,18 @@ export function ChallengeModal({
                 <div
                   key={idx}
                   draggable={!isSelected}
-                  onDragStart={(e) => !isSelected && handleDragStart(e, option)}
+                  onDragStart={(e) => !isSelected && handleDragStartFromOptions(e, option)}
+                  onDragEnd={handleDragEnd}
                   className={cn(
-                    'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 border-green-600 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white transition-all flex-shrink-0',
+                    'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 border-green-600 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white transition-all flex-shrink-0 touch-none',
                     isSelected
-                      ? 'border-green-700 bg-green-100 ring-2 ring-green-400 opacity-50 cursor-not-allowed'
+                      ? 'border-green-700 bg-green-200 ring-2 ring-green-400 cursor-not-allowed'
                       : cn(
-                          'cursor-grab active:cursor-grabbing hover:scale-110 hover:shadow-lg',
+                          'cursor-grab active:cursor-grabbing hover:scale-110 hover:shadow-lg hover:border-green-700',
                           isDragging && 'opacity-50 scale-90'
                         )
                   )}
+                  title={isSelected ? 'Ya seleccionado' : 'Arrastra este número'}
                 >
                   {option}
                 </div>
@@ -291,7 +446,7 @@ export function ChallengeModal({
           </div>
           {!selectedAnswer && (
             <p className="text-xs text-green-600 text-center italic px-2">
-              💡 Arrastra un número desde abajo hasta la casilla con "?"
+              💡 Arrastra un número desde abajo hasta la casilla con "?" en la secuencia
             </p>
           )}
         </div>
@@ -303,24 +458,44 @@ export function ChallengeModal({
     const handleDragStart = (e: React.DragEvent, index: number) => {
       e.dataTransfer.setData('text/plain', index.toString());
       e.dataTransfer.effectAllowed = 'move';
+      setPuzzleDraggedIndex(index);
+      if (e.currentTarget instanceof HTMLElement) {
+        e.currentTarget.style.opacity = '0.5';
+      }
     };
 
-    const handleDragOver = (e: React.DragEvent) => {
+    const handleDragEnd = (e: React.DragEvent) => {
+      setPuzzleDraggedIndex(null);
+      setPuzzleHoveredIndex(null);
+      if (e.currentTarget instanceof HTMLElement) {
+        e.currentTarget.style.opacity = '1';
+      }
+    };
+
+    const handleDragOver = (index: number) => (e: React.DragEvent) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
+      setPuzzleHoveredIndex(index);
+    };
+
+    const handleDragLeave = () => {
+      setPuzzleHoveredIndex(null);
     };
 
     const handleDrop = (e: React.DragEvent, dropIndex: number) => {
       e.preventDefault();
       const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
       
-      if (dragIndex !== dropIndex) {
+      if (dragIndex !== dropIndex && !isNaN(dragIndex)) {
         const newState = [...puzzleState];
         const draggedItem = newState[dragIndex];
         newState[dragIndex] = newState[dropIndex];
         newState[dropIndex] = draggedItem;
         setPuzzleState(newState);
       }
+      
+      setPuzzleDraggedIndex(null);
+      setPuzzleHoveredIndex(null);
     };
 
     // Detectar si todos los elementos son letras
@@ -373,20 +548,33 @@ export function ChallengeModal({
                 boxSize = 'w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20';
               }
               
+              const isDragging = puzzleDraggedIndex === idx;
+              const isHovered = puzzleHoveredIndex === idx && puzzleDraggedIndex !== null && puzzleDraggedIndex !== idx;
+              
               return (
                 <div
                   key={idx}
                   draggable
                   onDragStart={(e) => handleDragStart(e, idx)}
-                  onDragOver={handleDragOver}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={handleDragOver(idx)}
+                  onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, idx)}
-                  className={`${boxSize} border-2 sm:border-[3px] border-green-600 rounded-md sm:rounded-lg flex items-center justify-center ${textSize} cursor-move bg-white shadow-md hover:scale-110 hover:shadow-lg hover:border-green-700 transition-all active:scale-95 flex-shrink-0`}
+                  className={cn(
+                    `${boxSize} border-2 sm:border-[3px] rounded-md sm:rounded-lg flex items-center justify-center ${textSize} cursor-grab bg-white shadow-md transition-all active:cursor-grabbing active:scale-95 flex-shrink-0 touch-none`,
+                    isDragging 
+                      ? 'opacity-50 scale-90 border-green-400'
+                      : isHovered
+                      ? 'scale-110 shadow-xl border-green-700 bg-green-100 ring-2 ring-green-400'
+                      : 'hover:scale-110 hover:shadow-lg hover:border-green-700 border-green-600'
+                  )}
                   style={{ 
                     wordBreak: 'normal',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     ...textStyle
                   }}
+                  title="Arrastra para reordenar"
                 >
                   <span className="truncate" style={textStyle}>{item}</span>
                 </div>
