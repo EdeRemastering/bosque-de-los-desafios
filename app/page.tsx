@@ -159,6 +159,36 @@ export default function Home() {
             backgroundSize: '80px 80px'
           }}></div>
           <div className="relative z-10">
+            {/* Logo y información universitaria */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-5 md:mb-6 pb-4 sm:pb-5 border-b-2 border-white/30">
+              <div className="flex items-center justify-center bg-white/15 backdrop-blur-md rounded-xl p-2 sm:p-3 md:p-4 shadow-xl border-2 border-white/30 hover:bg-white/20 transition-all duration-300">
+                <div className="relative flex items-center justify-center" style={{ maxWidth: '200px' }}>
+                  <img 
+                    src="/images/logo_u_tolima.png" 
+                    alt="Logo Universidad del Tolima" 
+                    className="max-w-full h-auto object-contain drop-shadow-2xl"
+                    style={{ 
+                      height: 'clamp(56px, 14vw, 112px)',
+                      width: 'auto',
+                      maxWidth: '200px'
+                    }}
+                    loading="eager"
+                    onError={(e) => {
+                      console.error('Error loading logo:', e);
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col items-center sm:items-start justify-center gap-1.5 sm:gap-2 bg-white/15 backdrop-blur-md rounded-xl px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 md:py-4 shadow-xl border-2 border-white/30 hover:bg-white/20 transition-all duration-300">
+                <p className="text-sm sm:text-base md:text-lg lg:text-xl font-extrabold text-white drop-shadow-2xl tracking-wide">
+                  Semestre 6
+                </p>
+                <p className="text-xs sm:text-sm md:text-base lg:text-lg font-bold text-white/95 drop-shadow-xl text-center sm:text-left leading-tight">
+                  Licenciatura en Educación Infantil
+                </p>
+              </div>
+            </div>
             <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold mb-2 sm:mb-3 md:mb-4 drop-shadow-lg flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
               <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl">🌲</span>
               <span className="leading-tight">Aventura en el Bosque de los Desafíos</span>
