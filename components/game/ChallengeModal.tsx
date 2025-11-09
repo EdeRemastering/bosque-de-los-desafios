@@ -1,6 +1,6 @@
 'use client';
 //
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -36,6 +36,32 @@ export function ChallengeModal({
   const [hoveredDropZone, setHoveredDropZone] = useState<string | null>(null);
   const [puzzleDraggedIndex, setPuzzleDraggedIndex] = useState<number | null>(null);
   const [puzzleHoveredIndex, setPuzzleHoveredIndex] = useState<number | null>(null);
+  
+  // Estados para soporte táctil móvil
+  const [touchState, setTouchState] = useState<{
+    active: boolean;
+    item: string | null;
+    source: 'available' | string | null;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const [touchSequenceState, setTouchSequenceState] = useState<{
+    active: boolean;
+    option: string | null;
+    source: 'options' | 'answer' | null;
+  } | null>(null);
+  const [touchPuzzleState, setTouchPuzzleState] = useState<{
+    active: boolean;
+    index: number | null;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  
+  // Refs para funciones de drop (para acceso desde listeners globales)
+  const dropHandlersRef = useRef<{
+    handleItemDrop?: (categoryName: string, item: string) => void;
+    handleReturnToAvailable?: (item: string, sourceCategory: string) => void;
+  }>({});
 
   useEffect(() => {
     if (challenge?.type === 'puzzle') {
@@ -55,7 +81,164 @@ export function ChallengeModal({
     setHoveredDropZone(null);
     setPuzzleDraggedIndex(null);
     setPuzzleHoveredIndex(null);
+    setTouchState(null);
+    setTouchSequenceState(null);
+    setTouchPuzzleState(null);
   }, [challenge]);
+
+  // Listener global para eventos táctiles cuando hay un toque activo
+  useEffect(() => {
+    if (!touchState?.active && !touchSequenceState?.active && !touchPuzzleState?.active) return;
+
+    const handleGlobalTouchMove = (e: TouchEvent) => {
+      if (touchState?.active) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+        
+        if (element) {
+          const dropZone = element.closest('[data-drop-zone]') as HTMLElement;
+          if (dropZone) {
+            const zoneId = dropZone.getAttribute('data-drop-zone');
+            if (zoneId) {
+              setHoveredDropZone(zoneId);
+            }
+          } else {
+            setHoveredDropZone(null);
+          }
+        }
+      } else if (touchSequenceState?.active) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+        
+        if (element) {
+          const dropZone = element.closest('[data-sequence-drop-zone]') as HTMLElement;
+          const optionsZone = element.closest('[data-options-zone]') as HTMLElement;
+          if (dropZone) {
+            setDropZoneHovered(true);
+          } else if (optionsZone) {
+            setDropZoneHovered(false);
+          } else {
+            setDropZoneHovered(false);
+          }
+        } else {
+          setDropZoneHovered(false);
+        }
+      } else if (touchPuzzleState?.active) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+        
+        if (element) {
+          const puzzleItem = element.closest('[data-puzzle-item]') as HTMLElement;
+          if (puzzleItem) {
+            const index = puzzleItem.getAttribute('data-puzzle-index');
+            if (index !== null && touchPuzzleState.index !== null && parseInt(index) !== touchPuzzleState.index) {
+              setPuzzleHoveredIndex(parseInt(index));
+            } else {
+              setPuzzleHoveredIndex(null);
+            }
+          } else {
+            setPuzzleHoveredIndex(null);
+          }
+        } else {
+          setPuzzleHoveredIndex(null);
+        }
+      }
+    };
+
+    const handleGlobalTouchEnd = (e: TouchEvent) => {
+      if (touchState?.active) {
+        const touch = e.changedTouches[0];
+        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+        
+        if (element && touchState.item && touchState.source) {
+          const dropZone = element.closest('[data-drop-zone]') as HTMLElement;
+          if (dropZone) {
+            const zoneId = dropZone.getAttribute('data-drop-zone');
+            if (zoneId && touchState.item && touchState.source) {
+              const { handleItemDrop, handleReturnToAvailable } = dropHandlersRef.current;
+              
+              if (handleItemDrop && handleReturnToAvailable) {
+                // Si se arrastra desde disponible a una categoría
+                if (touchState.source === 'available' && zoneId !== 'available') {
+                  handleItemDrop(zoneId, touchState.item);
+                }
+                // Si se arrastra desde una categoría de vuelta a disponible
+                else if (touchState.source !== 'available' && zoneId === 'available') {
+                  handleReturnToAvailable(touchState.item, touchState.source);
+                }
+                // Si se arrastra de una categoría a otra categoría
+                else if (touchState.source !== 'available' && zoneId !== 'available' && touchState.source !== zoneId) {
+                  handleReturnToAvailable(touchState.item, touchState.source);
+                  handleItemDrop(zoneId, touchState.item);
+                }
+              }
+            }
+          }
+        }
+        
+        setTouchState(null);
+        setDraggedItem(null);
+        setHoveredDropZone(null);
+      } else if (touchSequenceState?.active) {
+        const touch = e.changedTouches[0];
+        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+        
+        if (element && touchSequenceState.option) {
+          const dropZone = element.closest('[data-sequence-drop-zone]') as HTMLElement;
+          const optionsZone = element.closest('[data-options-zone]') as HTMLElement;
+          
+          if (dropZone && touchSequenceState.source === 'options') {
+            setSelectedAnswer(touchSequenceState.option);
+          } else if (optionsZone && touchSequenceState.source === 'answer') {
+            setSelectedAnswer(null);
+          }
+        }
+        
+        setTouchSequenceState(null);
+        setDraggedOption(null);
+        setDropZoneHovered(false);
+      } else if (touchPuzzleState?.active) {
+        const touch = e.changedTouches[0];
+        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+        
+        if (element && touchPuzzleState.index !== null) {
+          const puzzleItem = element.closest('[data-puzzle-item]') as HTMLElement;
+          if (puzzleItem) {
+            const dropIndex = puzzleItem.getAttribute('data-puzzle-index');
+            if (dropIndex !== null) {
+              const dragIndex = touchPuzzleState.index;
+              const dropIdx = parseInt(dropIndex);
+              
+              if (dragIndex !== dropIdx) {
+                const newState = [...puzzleState];
+                const draggedItem = newState[dragIndex];
+                newState[dragIndex] = newState[dropIdx];
+                newState[dropIdx] = draggedItem;
+                setPuzzleState(newState);
+              }
+            }
+          }
+        }
+        
+        setTouchPuzzleState(null);
+        setPuzzleDraggedIndex(null);
+        setPuzzleHoveredIndex(null);
+      }
+    };
+
+    document.addEventListener('touchmove', handleGlobalTouchMove, { passive: false });
+    document.addEventListener('touchend', handleGlobalTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', handleGlobalTouchEnd, { passive: false });
+
+    return () => {
+      document.removeEventListener('touchmove', handleGlobalTouchMove);
+      document.removeEventListener('touchend', handleGlobalTouchEnd);
+      document.removeEventListener('touchcancel', handleGlobalTouchEnd);
+    };
+  }, [touchState, touchSequenceState, touchPuzzleState, puzzleState]);
 
   if (!challenge) return null;
 
@@ -123,6 +306,9 @@ export function ChallengeModal({
       // Agregar el item de vuelta a la lista de disponibles
       setAvailableItems(prev => [...prev, item]);
     };
+    
+    // Guardar referencias a las funciones de drop para uso en listeners globales
+    dropHandlersRef.current = { handleItemDrop, handleReturnToAvailable };
 
     const handleDragStart = (e: React.DragEvent, item: string, source: 'available' | string) => {
       e.dataTransfer.setData('item', item);
@@ -157,7 +343,10 @@ export function ChallengeModal({
       e.preventDefault();
       const item = e.dataTransfer.getData('item');
       const source = e.dataTransfer.getData('source');
-      
+      performDrop(item, source, targetZone);
+    };
+
+    const performDrop = (item: string, source: string, targetZone: 'available' | string) => {
       // Si se arrastra desde disponible a una categoría
       if (source === 'available' && targetZone !== 'available') {
         handleItemDrop(targetZone, item);
@@ -176,6 +365,20 @@ export function ChallengeModal({
       setHoveredDropZone(null);
     };
 
+    // Manejador de inicio de toque para móvil
+    const handleTouchStart = (e: React.TouchEvent, item: string, source: 'available' | string) => {
+      const touch = e.touches[0];
+      setTouchState({
+        active: true,
+        item,
+        source,
+        startX: touch.clientX,
+        startY: touch.clientY,
+      });
+      setDraggedItem({ item, source });
+      e.preventDefault();
+    };
+
     return (
       <div className="space-y-3 sm:space-y-4 md:space-y-6">
         <p className="text-center text-sm sm:text-base md:text-lg font-semibold text-green-800 px-2">
@@ -186,6 +389,7 @@ export function ChallengeModal({
             📦 Objetos para clasificar:
           </p>
           <div 
+            data-drop-zone="available"
             className={cn(
               "flex flex-wrap gap-2 sm:gap-3 justify-center p-3 sm:p-4 md:p-5 rounded-lg border-2 min-h-[80px] sm:min-h-[100px] items-center transition-all",
               hoveredDropZone === 'available' 
@@ -201,9 +405,11 @@ export function ChallengeModal({
                 <div
                   key={`${item}-${idx}`}
                   draggable
-                  className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg bg-white border-2 border-green-400 flex items-center justify-center text-2xl sm:text-3xl cursor-grab hover:scale-110 hover:border-green-600 hover:shadow-lg transition-all active:cursor-grabbing touch-none"
+                  className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg bg-white border-2 border-green-400 flex items-center justify-center text-2xl sm:text-3xl cursor-grab hover:scale-110 hover:border-green-600 hover:shadow-lg transition-all active:cursor-grabbing select-none"
                   onDragStart={(e) => handleDragStart(e, item, 'available')}
                   onDragEnd={handleDragEnd}
+                  onTouchStart={(e) => handleTouchStart(e, item, 'available')}
+                  style={{ touchAction: 'none' }}
                 >
                   {item}
                 </div>
@@ -228,6 +434,7 @@ export function ChallengeModal({
             {categories.map((category) => (
               <div
                 key={category.name}
+                data-drop-zone={category.name}
                 className={cn(
                   "min-w-[120px] min-h-[120px] sm:min-w-[140px] sm:min-h-[140px] md:min-w-[150px] md:min-h-[150px] border-2 rounded-lg p-2 sm:p-3 md:p-4 transition-all",
                   hoveredDropZone === category.name
@@ -246,9 +453,11 @@ export function ChallengeModal({
                     <div
                       key={`${category.name}-${idx}`}
                       draggable
-                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white border-2 border-green-400 flex items-center justify-center text-lg sm:text-xl md:text-2xl shadow-sm cursor-grab hover:scale-110 hover:border-green-600 hover:shadow-lg transition-all active:cursor-grabbing touch-none"
+                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white border-2 border-green-400 flex items-center justify-center text-lg sm:text-xl md:text-2xl shadow-sm cursor-grab hover:scale-110 hover:border-green-600 hover:shadow-lg transition-all active:cursor-grabbing select-none"
                       onDragStart={(e) => handleDragStart(e, item, category.name)}
                       onDragEnd={handleDragEnd}
+                      onTouchStart={(e) => handleTouchStart(e, item, category.name)}
+                      style={{ touchAction: 'none' }}
                       title="Arrastra para mover a otra categoría o devolver"
                     >
                       {item}
@@ -387,6 +596,17 @@ export function ChallengeModal({
       }
     };
 
+    // Manejadores táctiles para móvil
+    const handleTouchStartSequence = (e: React.TouchEvent, option: string, source: 'options' | 'answer') => {
+      setTouchSequenceState({
+        active: true,
+        option,
+        source,
+      });
+      setDraggedOption(option);
+      e.preventDefault();
+    };
+
     // Reemplazar "?" con la respuesta seleccionada si existe
     if (selectedAnswer && questionMarkIndex !== -1) {
       displayedPattern[questionMarkIndex] = selectedAnswer;
@@ -411,11 +631,14 @@ export function ChallengeModal({
                   draggable={!!isSelectedCell}
                   onDragStart={isSelectedCell ? (e) => handleDragStartFromAnswer(e, selectedAnswer) : undefined}
                   onDragEnd={isSelectedCell ? handleDragEnd : undefined}
+                  data-sequence-drop-zone={isDropZone ? 'true' : undefined}
                   onDragOver={isDropZone ? handleDragOver : (e) => e.preventDefault()}
                   onDragLeave={isDropZone ? handleDragLeave : undefined}
                   onDrop={isDropZone ? handleDrop : (e) => e.preventDefault()}
+                  onTouchStart={isSelectedCell ? (e) => handleTouchStartSequence(e, selectedAnswer, 'answer') : undefined}
+                  style={(isSelectedCell || isDropZone) ? { touchAction: 'none' } : undefined}
                   className={cn(
-                    'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white shadow-sm transition-all touch-none',
+                    'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white shadow-sm transition-all select-none',
                     isDropZone && !selectedAnswer
                       ? cn(
                           'border-green-600 border-dashed',
@@ -440,6 +663,7 @@ export function ChallengeModal({
             {selectedAnswer ? '✅ Respuesta seleccionada - Arrastra para cambiarla' : '📦 Arrastra una opción a la secuencia 👆'}
           </p>
           <div 
+            data-options-zone="true"
             className={cn(
               "flex gap-2 sm:gap-3 md:gap-4 justify-center flex-wrap p-3 sm:p-4 md:p-5 rounded-lg border-2 transition-all",
               dropZoneHovered && draggedOption && !options.includes(draggedOption)
@@ -467,8 +691,10 @@ export function ChallengeModal({
                   draggable={!isSelected}
                   onDragStart={(e) => !isSelected && handleDragStartFromOptions(e, option)}
                   onDragEnd={handleDragEnd}
+                  onTouchStart={(e) => !isSelected && handleTouchStartSequence(e, option, 'options')}
+                  style={!isSelected ? { touchAction: 'none' } : undefined}
                   className={cn(
-                    'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 border-green-600 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white transition-all flex-shrink-0 touch-none',
+                    'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 border-green-600 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white transition-all flex-shrink-0 select-none',
                     isSelected
                       ? 'border-green-700 bg-green-200 ring-2 ring-green-400 cursor-not-allowed'
                       : cn(
@@ -537,6 +763,19 @@ export function ChallengeModal({
       setPuzzleHoveredIndex(null);
     };
 
+    // Manejador táctil para móvil
+    const handleTouchStartPuzzle = (e: React.TouchEvent, index: number) => {
+      const touch = e.touches[0];
+      setTouchPuzzleState({
+        active: true,
+        index,
+        startX: touch.clientX,
+        startY: touch.clientY,
+      });
+      setPuzzleDraggedIndex(index);
+      e.preventDefault();
+    };
+
     // Detectar si todos los elementos son letras
     const allLetters = puzzleState.every(item => item.length === 1 && /[A-Z]/.test(item));
     const isVowels = allLetters && puzzleState.every(item => /[AEIOU]/.test(item));
@@ -593,26 +832,30 @@ export function ChallengeModal({
               return (
                 <div
                   key={idx}
+                  data-puzzle-item="true"
+                  data-puzzle-index={idx}
                   draggable
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragEnd={handleDragEnd}
                   onDragOver={handleDragOver(idx)}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, idx)}
+                  onTouchStart={(e) => handleTouchStartPuzzle(e, idx)}
+                  style={{ 
+                    touchAction: 'none',
+                    wordBreak: 'normal',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    ...textStyle
+                  }}
                   className={cn(
-                    `${boxSize} border-2 sm:border-[3px] rounded-md sm:rounded-lg flex items-center justify-center ${textSize} cursor-grab bg-white shadow-md transition-all active:cursor-grabbing active:scale-95 flex-shrink-0 touch-none`,
+                    `${boxSize} border-2 sm:border-[3px] rounded-md sm:rounded-lg flex items-center justify-center ${textSize} cursor-grab bg-white shadow-md transition-all active:cursor-grabbing active:scale-95 flex-shrink-0 select-none`,
                     isDragging 
                       ? 'opacity-50 scale-90 border-green-400'
                       : isHovered
                       ? 'scale-110 shadow-xl border-green-700 bg-green-100 ring-2 ring-green-400'
                       : 'hover:scale-110 hover:shadow-lg hover:border-green-700 border-green-600'
                   )}
-                  style={{ 
-                    wordBreak: 'normal',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    ...textStyle
-                  }}
                   title="Arrastra para reordenar"
                 >
                   <span className="truncate" style={textStyle}>{item}</span>
