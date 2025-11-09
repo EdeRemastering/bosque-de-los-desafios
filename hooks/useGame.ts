@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Player, Team, Difficulty, GameMode, Challenge } from '@/lib/types';
 import { BOARD_SIZE, FOREST_CHARACTERS, FOREST_COLORS, generateRandomChallengeCells } from '@/lib/game-config';
+import { playAnimalSound, playTeamVictorySound } from '@/lib/animal-sounds';
 import { generateChallenge, selectRandomChallenges, generateSpecificChallenge, PredefinedChallenge } from '@/lib/challenge-generator';
 
 export function useGame() {
@@ -304,7 +305,6 @@ export function useGame() {
     setSelectedTimeLimit(timeLimit);
 
     if (mode === 'teams') {
-      const teamNames = ['Equipo Verde', 'Equipo Esmeralda'];
       const teamColors = [FOREST_COLORS[1], FOREST_COLORS[3]];
       const newTeams: Team[] = [];
 
@@ -315,9 +315,26 @@ export function useGame() {
           teamPlayers.push(newPlayers[j]);
         }
 
+        // Nombrar el equipo según el animal principal (primer jugador del equipo)
+        const mainAnimal = teamPlayers[0];
+        const animalName = FOREST_CHARACTERS.find(c => c.emoji === mainAnimal?.icon)?.name || 'Animal';
+        // Usar plural correcto
+        let pluralName = animalName;
+        if (!animalName.endsWith('s')) {
+          // Casos especiales
+          if (animalName === 'Ciervo') {
+            pluralName = 'Ciervos';
+          } else if (animalName === 'Búho') {
+            pluralName = 'Búhos';
+          } else {
+            pluralName = `${animalName}s`;
+          }
+        }
+        const teamName = `Equipo de ${pluralName}`;
+
         newTeams.push({
           id: i,
-          name: teamNames[i],
+          name: teamName,
           color: teamColors[i],
           players: teamPlayers,
           position: 0,
@@ -334,6 +351,80 @@ export function useGame() {
 
     setGameStarted(true);
     setDiceRolled(false);
+    
+    // Guardar la configuración para poder reiniciar el juego
+    gameConfigRef.current = {
+      playerCount,
+      difficulty: difficultyLevel,
+      mode,
+      timeLimit,
+      playerCharacters,
+    };
+  }, []);
+  
+  // Función para reiniciar el juego con la misma configuración
+  const resetGame = useCallback(() => {
+    if (!gameConfigRef.current) return;
+    
+    const config = gameConfigRef.current;
+    
+    // Cerrar cualquier desafío activo
+    setCurrentChallenge(null);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // Reiniciar el juego con la misma configuración
+    startGame(
+      config.playerCount,
+      config.difficulty,
+      config.mode,
+      config.timeLimit,
+      config.playerCharacters
+    );
+  }, [startGame]);
+  
+  // Función para volver al menú (resetear todo)
+  const resetToMenu = useCallback(() => {
+    // Cerrar cualquier desafío activo
+    setCurrentChallenge(null);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // Limpiar timeouts
+    if (movePlayerTimeoutRef.current) {
+      clearTimeout(movePlayerTimeoutRef.current);
+      movePlayerTimeoutRef.current = null;
+    }
+    
+    // Resetear todo el estado
+    setPlayers([]);
+    setTeams([]);
+    setCurrentPlayerIndex(0);
+    setCurrentTeamIndex(0);
+    setCurrentTeamPlayerIndex(0);
+    setGameStarted(false);
+    setDiceRolled(false);
+    setDiceValue(null);
+    setCurrentChallenge(null);
+    setChallengeCells([]);
+    setTimeRemaining(60);
+    setSelectedTimeLimit(null);
+    
+    // Resetear refs
+    challengeCellsRef.current = [];
+    challengeMapRef.current.clear();
+    playersRef.current = [];
+    teamsRef.current = [];
+    currentPlayerIndexRef.current = 0;
+    currentTeamIndexRef.current = 0;
+    currentTeamPlayerIndexRef.current = 0;
+    isMovingPlayerRef.current = false;
+    timeExpiredHandledRef.current = false;
+    gameConfigRef.current = null;
   }, []);
 
   const startChallengeTimer = useCallback(() => {
@@ -362,6 +453,15 @@ export function useGame() {
   
   // Ref para evitar que se ejecute múltiples veces cuando el tiempo llega a 0
   const timeExpiredHandledRef = useRef(false);
+  
+  // Guardar la configuración inicial del juego para poder reiniciarlo
+  const gameConfigRef = useRef<{
+    playerCount: number;
+    difficulty: Difficulty;
+    mode: GameMode;
+    timeLimit: number | null;
+    playerCharacters: string[];
+  } | null>(null);
 
   useEffect(() => {
     if (currentChallenge && selectedTimeLimit !== null) {
@@ -430,6 +530,14 @@ export function useGame() {
           nextTurn();
         }, 300);
         return;
+      }
+      
+      // Reproducir sonido del animal cuando completa el desafío correctamente
+      try {
+        playAnimalSound(currentPlayer.icon);
+      } catch (error) {
+        // Si falla la reproducción de audio, continuar sin sonido
+        console.log('No se pudo reproducir el sonido:', error);
       }
 
       setPlayers(prevPlayers => {
@@ -549,6 +657,7 @@ export function useGame() {
     gameMode,
     timeLimitEnabled: selectedTimeLimit !== null,
     timeLimit: selectedTimeLimit,
+    playerCharacters: players.map(p => p.icon),
     currentChallenge,
     timeRemaining,
     challengeCells,
@@ -557,5 +666,7 @@ export function useGame() {
     nextTurn,
     closeChallenge,
     completeChallenge,
+    resetGame,
+    resetToMenu,
   };
 }

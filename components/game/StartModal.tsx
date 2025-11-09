@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +33,13 @@ interface StartModalProps {
     timeLimit: number | null,
     playerCharacters: string[]
   ) => void;
+  initialConfig?: {
+    playerCount?: number;
+    difficulty?: Difficulty;
+    mode?: GameMode;
+    timeLimit?: number | null;
+    playerCharacters?: string[];
+  };
 }
 
 interface CharacterSelection {
@@ -40,14 +47,46 @@ interface CharacterSelection {
   playerNumber: number;
 }
 
-export function StartModal({ open, onStart }: StartModalProps) {
-  const [playerCount, setPlayerCount] = useState(2);
-  const [difficulty, setDifficulty] = useState<Difficulty>('medium');
-  const [mode, setMode] = useState<GameMode>('individual');
-  const [timeLimitEnabled, setTimeLimitEnabled] = useState(false);
-  const [timeLimit, setTimeLimit] = useState<number>(30); // Tiempo por defecto: 30 segundos
+export function StartModal({ open, onStart, initialConfig }: StartModalProps) {
+  const [playerCount, setPlayerCount] = useState(initialConfig?.playerCount || 2);
+  const [difficulty, setDifficulty] = useState<Difficulty>(initialConfig?.difficulty || 'medium');
+  const [mode, setMode] = useState<GameMode>(initialConfig?.mode || 'individual');
+  const [timeLimitEnabled, setTimeLimitEnabled] = useState(initialConfig?.timeLimit !== null && initialConfig?.timeLimit !== undefined);
+  const [timeLimit, setTimeLimit] = useState<number>(initialConfig?.timeLimit || 30); // Tiempo por defecto: 30 segundos
   const [currentPlayerSelecting, setCurrentPlayerSelecting] = useState(1);
-  const [playerSelections, setPlayerSelections] = useState<CharacterSelection[]>([]);
+  const [playerSelections, setPlayerSelections] = useState<CharacterSelection[]>(
+    initialConfig?.playerCharacters?.map((emoji, index) => ({
+      emoji,
+      playerNumber: index + 1
+    })) || []
+  );
+  
+  // Resetear selecciones cuando cambia el modal o la configuración inicial
+  useEffect(() => {
+    if (open && initialConfig) {
+      setPlayerCount(initialConfig.playerCount || 2);
+      setDifficulty(initialConfig.difficulty || 'medium');
+      setMode(initialConfig.mode || 'individual');
+      setTimeLimitEnabled(initialConfig.timeLimit !== null && initialConfig.timeLimit !== undefined);
+      setTimeLimit(initialConfig.timeLimit || 30);
+      setPlayerSelections(
+        initialConfig.playerCharacters?.map((emoji, index) => ({
+          emoji,
+          playerNumber: index + 1
+        })) || []
+      );
+      setCurrentPlayerSelecting(1);
+    } else if (open && !initialConfig) {
+      // Si no hay configuración inicial, resetear a valores por defecto
+      setPlayerCount(2);
+      setDifficulty('medium');
+      setMode('individual');
+      setTimeLimitEnabled(false);
+      setTimeLimit(30);
+      setPlayerSelections([]);
+      setCurrentPlayerSelecting(1);
+    }
+  }, [open, initialConfig]);
 
   const handleCharacterSelect = (emoji: string, playerNumber: number) => {
     setPlayerSelections(prev => {
@@ -166,10 +205,13 @@ export function StartModal({ open, onStart }: StartModalProps) {
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto bg-gradient-to-br from-green-50 to-emerald-50">
         <DialogHeader>
           <DialogTitle className="text-3xl text-center text-green-800">
-            🌲 Aventura en el Bosque de los Desafíos 🌲
+            {initialConfig ? '🔄 Reiniciar Juego' : '🌲 Aventura en el Bosque de los Desafíos 🌲'}
           </DialogTitle>
           <DialogDescription className="text-center text-lg pt-2 text-green-700">
-            ¡Únete a esta aventura y completa desafíos para llegar primero a la meta!
+            {initialConfig 
+              ? 'Puedes cambiar los personajes, la dificultad u otras opciones antes de reiniciar el juego.'
+              : '¡Únete a esta aventura y completa desafíos para llegar primero a la meta!'
+            }
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-6 py-4">
@@ -329,7 +371,7 @@ export function StartModal({ open, onStart }: StartModalProps) {
             onClick={handleStart} 
             className="w-full text-lg py-6 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold shadow-lg"
           >
-            🎮 Comenzar Aventura en el Bosque
+            {initialConfig ? '🔄 Reiniciar Juego' : '🎮 Comenzar Aventura en el Bosque'}
           </Button>
         </div>
       </DialogContent>

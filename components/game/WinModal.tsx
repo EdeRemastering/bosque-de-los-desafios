@@ -14,9 +14,10 @@ interface WinModalProps {
   winner: Player | Team | null;
   gameMode: 'individual' | 'teams';
   onRestart: () => void;
+  onBackToMenu: () => void;
 }
 
-export function WinModal({ open, winner, gameMode, onRestart }: WinModalProps) {
+export function WinModal({ open, winner, gameMode, onRestart, onBackToMenu }: WinModalProps) {
   const getWinnerMessage = () => {
     if (!winner) return '';
 
@@ -45,12 +46,20 @@ export function WinModal({ open, winner, gameMode, onRestart }: WinModalProps) {
             {getWinnerMessage()}
           </p>
         </div>
-        <Button 
-          onClick={onRestart} 
-          className="w-full text-lg py-6 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold"
-        >
-          🌲 Jugar de Nuevo
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button 
+            onClick={onRestart} 
+            className="flex-1 text-base sm:text-lg py-4 sm:py-6 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold"
+          >
+            🔄 Jugar de Nuevo
+          </Button>
+          <Button 
+            onClick={onBackToMenu} 
+            className="flex-1 text-base sm:text-lg py-4 sm:py-6 bg-gray-600 hover:bg-gray-700 text-white font-bold"
+          >
+            🏠 Volver al Menú
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

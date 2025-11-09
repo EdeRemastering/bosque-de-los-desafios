@@ -143,6 +143,15 @@ export function AnimatedPlayerToken({
     const currentPlayerPosition = player.position;
     const storedPrevPosition = prevPositionRef.current;
     
+    // Si es la primera vez, establecer la posición inicial sin animar
+    if (storedPrevPosition === null) {
+      prevPositionRef.current = currentPlayerPosition;
+      const offset = getPlayerOffset(playersInCell, indexInCell);
+      const initialPos = getCellPosition(currentPlayerPosition, offset.offsetX, offset.offsetY);
+      setPosition(initialPos);
+      return;
+    }
+    
     // Solo animar si realmente cambió la posición
     if (storedPrevPosition === currentPlayerPosition) {
       return;
@@ -150,7 +159,7 @@ export function AnimatedPlayerToken({
     
     // IMPORTANTE: Capturar las posiciones ANTES de cualquier otra cosa
     // NO actualizar prevPositionRef aquí, solo al final de la animación
-    const oldPosition = storedPrevPosition;
+    const oldPosition = storedPrevPosition ?? 0;
     const newPosition = currentPlayerPosition;
     
     // Calcular el número de pasos CORRECTAMENTE

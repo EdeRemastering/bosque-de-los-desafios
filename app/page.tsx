@@ -12,12 +12,19 @@ import { BOARD_SIZE } from '@/lib/game-config';
 import { Player, Team } from '@/lib/types';
 import { toast } from 'sonner';
 import { Dice3D } from '@/components/game/Dice3D';
+import { playTeamVictorySound, preloadAllSounds } from '@/lib/animal-sounds';
 
 export default function Home() {
   const game = useGame();
   const [showWinModal, setShowWinModal] = useState(false);
   const [winner, setWinner] = useState<Player | Team | null>(null);
   const [isDiceRolling, setIsDiceRolling] = useState(false);
+  const [showRestartModal, setShowRestartModal] = useState(false);
+
+  // Precargar todos los sonidos cuando se monta el componente
+  useEffect(() => {
+    preloadAllSounds();
+  }, []);
 
   useEffect(() => {
     // Verificar si alguien ganó
@@ -32,19 +39,48 @@ export default function Home() {
         if (winningTeam) {
           setWinner(winningTeam);
           setShowWinModal(true);
+          // Reproducir sonido de victoria del equipo
+          const mainAnimal = winningTeam.players[0];
+          if (mainAnimal) {
+            try {
+              playTeamVictorySound(mainAnimal.icon);
+            } catch (error) {
+              console.log('No se pudo reproducir el sonido de victoria:', error);
+            }
+          }
         }
       } else {
         const winningPlayer = game.players.find(p => p.position >= BOARD_SIZE - 1);
         if (winningPlayer) {
           setWinner(winningPlayer);
           setShowWinModal(true);
+          // Reproducir sonido de victoria del animal
+          try {
+            playTeamVictorySound(winningPlayer.icon);
+          } catch (error) {
+            console.log('No se pudo reproducir el sonido de victoria:', error);
+          }
         }
       }
     }
   }, [game.players, game.teams, game.gameStarted, game.gameMode]);
 
-  const handleStart = (playerCount: number, difficulty: any, mode: any, timeLimit: boolean, playerCharacters: string[]) => {
+  const handleStart = (playerCount: number, difficulty: any, mode: any, timeLimit: number | null, playerCharacters: string[]) => {
     game.startGame(playerCount, difficulty, mode, timeLimit, playerCharacters);
+    setShowRestartModal(false);
+  };
+
+  // Obtener la configuración actual del juego para prellenar el modal
+  const getCurrentGameConfig = () => {
+    if (!game.gameStarted) return undefined;
+    
+    return {
+      playerCount: game.players.length,
+      difficulty: game.difficulty,
+      mode: game.gameMode,
+      timeLimit: game.timeLimit,
+      playerCharacters: game.players.map(p => p.icon),
+    };
   };
 
   const handleRollDice = () => {
@@ -98,7 +134,32 @@ export default function Home() {
   };
 
   const handleRestart = () => {
-    window.location.reload();
+    // Mostrar el modal de inicio con la configuración actual para permitir cambiar personajes
+    setShowRestartModal(true);
+    setShowWinModal(false);
+    setWinner(null);
+  };
+
+  const handleRestartWithSameConfig = () => {
+    // Reiniciar directamente con la misma configuración sin abrir el modal
+    game.resetGame();
+    setShowWinModal(false);
+    setWinner(null);
+    toast.success('🔄 Juego reiniciado', {
+      description: 'El juego se ha reiniciado con la misma configuración.',
+      duration: 3000,
+    });
+  };
+
+  const handleBackToMenu = () => {
+    game.resetToMenu();
+    setShowWinModal(false);
+    setShowRestartModal(false);
+    setWinner(null);
+    toast.info('🏠 Volviendo al menú', {
+      description: 'Puedes configurar un nuevo juego.',
+      duration: 3000,
+    });
   };
 
   return (
@@ -135,24 +196,44 @@ export default function Home() {
                     : 'Conejo'}
                 </span>
               </div>
-              <div className="flex flex-col items-center gap-1 sm:gap-2">
-                <div 
-                  onClick={handleRollDice}
-                  className={`cursor-pointer ${(!game.gameStarted || game.diceRolled) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform'}`}
-                >
-                  <Dice3D 
-                    value={game.diceValue} 
-                    isRolling={isDiceRolling}
-                    onRollComplete={handleDiceRollComplete}
-                  />
+              <div className="flex flex-col items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                <div className="flex flex-col items-center gap-1 sm:gap-2">
+                  <div 
+                    onClick={handleRollDice}
+                    className={`cursor-pointer ${(!game.gameStarted || game.diceRolled) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform'}`}
+                  >
+                    <Dice3D 
+                      value={game.diceValue} 
+                      isRolling={isDiceRolling}
+                      onRollComplete={handleDiceRollComplete}
+                    />
+                  </div>
+                  <Button
+                    onClick={handleRollDice}
+                    disabled={!game.gameStarted || game.diceRolled}
+                    className="text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 hover:bg-green-50 font-bold shadow-lg border-2 border-green-300 hover:scale-105 transition-transform w-full sm:w-auto"
+                  >
+                    {game.diceRolled ? (game.diceValue ? `Valor: ${game.diceValue}` : 'Lanzando...') : 'Lanzar Dado'}
+                  </Button>
                 </div>
-                <Button
-                  onClick={handleRollDice}
-                  disabled={!game.gameStarted || game.diceRolled}
-                  className="text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 hover:bg-green-50 font-bold shadow-lg border-2 border-green-300 hover:scale-105 transition-transform w-full sm:w-auto"
-                >
-                  {game.diceRolled ? (game.diceValue ? `Valor: ${game.diceValue}` : 'Lanzando...') : 'Lanzar Dado'}
-                </Button>
+                {game.gameStarted && (
+                  <div className="flex flex-row gap-2 w-full sm:w-auto">
+                    <Button
+                      onClick={handleRestart}
+                      className="flex-1 sm:flex-none text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white hover:bg-blue-700 font-bold shadow-lg border-2 border-blue-700 hover:scale-105 transition-transform"
+                      title="Reiniciar juego con la misma configuración"
+                    >
+                      🔄 Reiniciar
+                    </Button>
+                    <Button
+                      onClick={handleBackToMenu}
+                      className="flex-1 sm:flex-none text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-600 text-white hover:bg-gray-700 font-bold shadow-lg border-2 border-gray-700 hover:scale-105 transition-transform"
+                      title="Volver al menú de inicio"
+                    >
+                      🏠 Menú
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -177,8 +258,9 @@ export default function Home() {
       </div>
 
       <StartModal
-        open={!game.gameStarted}
+        open={!game.gameStarted || showRestartModal}
         onStart={handleStart}
+        initialConfig={showRestartModal ? getCurrentGameConfig() : undefined}
       />
 
       {game.currentChallenge && (
@@ -196,7 +278,13 @@ export default function Home() {
         winner={winner}
         gameMode={game.gameMode}
         onRestart={handleRestart}
+        onBackToMenu={handleBackToMenu}
       />
+
+      {/* Cerrar el modal de reinicio si el usuario vuelve al menú */}
+      {showRestartModal && !game.gameStarted && !showRestartModal && (
+        <div style={{ display: 'none' }} />
+      )}
     </main>
   );
 }
