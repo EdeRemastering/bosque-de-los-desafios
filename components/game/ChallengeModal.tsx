@@ -30,6 +30,8 @@ export function ChallengeModal({
   const [puzzleState, setPuzzleState] = useState<string[]>([]);
   const [classificationState, setClassificationState] = useState<Record<string, string[]>>({});
   const [availableItems, setAvailableItems] = useState<string[]>([]);
+  const [draggedOption, setDraggedOption] = useState<string | null>(null);
+  const [dropZoneHovered, setDropZoneHovered] = useState(false);
 
   useEffect(() => {
     if (challenge?.type === 'puzzle') {
@@ -43,6 +45,8 @@ export function ChallengeModal({
       setAvailableItems(shuffledItems);
     }
     setSelectedAnswer(null);
+    setDraggedOption(null);
+    setDropZoneHovered(false);
   }, [challenge]);
 
   if (!challenge) return null;
@@ -189,37 +193,107 @@ export function ChallengeModal({
     const pattern = challenge.pattern || [];
     const options = challenge.options || [];
 
+    // Encontrar el índice de la casilla con "?"
+    const questionMarkIndex = pattern.findIndex(item => item === '?');
+    const displayedPattern = [...pattern];
+
+    // Manejar el inicio del arrastre
+    const handleDragStart = (e: React.DragEvent, option: string) => {
+      e.dataTransfer.setData('text/plain', option);
+      e.dataTransfer.effectAllowed = 'move';
+      setDraggedOption(option);
+    };
+
+    // Manejar cuando se arrastra sobre la zona de drop
+    const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropZoneHovered(true);
+    };
+
+    // Manejar cuando se sale de la zona de drop
+    const handleDragLeave = () => {
+      setDropZoneHovered(false);
+    };
+
+    // Manejar cuando se suelta en la zona de drop
+    const handleDrop = (e: React.DragEvent) => {
+      e.preventDefault();
+      const option = e.dataTransfer.getData('text/plain');
+      setSelectedAnswer(option);
+      setDraggedOption(null);
+      setDropZoneHovered(false);
+    };
+
+    // Reemplazar "?" con la respuesta seleccionada si existe
+    if (selectedAnswer && questionMarkIndex !== -1) {
+      displayedPattern[questionMarkIndex] = selectedAnswer;
+    }
+
     return (
       <div className="space-y-3 sm:space-y-4 md:space-y-6">
-        <p className="text-center text-sm sm:text-base md:text-lg font-semibold px-2">Completa la secuencia</p>
+        <p className="text-center text-sm sm:text-base md:text-lg font-semibold px-2">
+          Arrastra el número correcto para completar la secuencia
+        </p>
         <div className="flex gap-2 sm:gap-3 md:gap-4 justify-center flex-wrap p-2 sm:p-3 md:p-4 bg-green-50 rounded-lg border-2 border-green-300">
-          {pattern.map((item, idx) => (
-            <div
-              key={idx}
-              className={cn(
-                'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white shadow-sm',
-                item === '?' 
-                  ? 'border-green-600 border-dashed animate-pulse' 
-                  : 'border-green-500'
-              )}
-            >
-              {item}
-            </div>
-          ))}
+          {displayedPattern.map((item, idx) => {
+            const isDropZone = idx === questionMarkIndex && !selectedAnswer;
+            return (
+              <div
+                key={idx}
+                onDragOver={isDropZone ? handleDragOver : undefined}
+                onDragLeave={isDropZone ? handleDragLeave : undefined}
+                onDrop={isDropZone ? handleDrop : undefined}
+                className={cn(
+                  'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white shadow-sm transition-all',
+                  isDropZone
+                    ? cn(
+                        'border-green-600 border-dashed cursor-pointer',
+                        dropZoneHovered 
+                          ? 'bg-green-100 scale-110 border-green-700 shadow-lg' 
+                          : 'animate-pulse'
+                      )
+                    : 'border-green-500'
+                )}
+              >
+                {item}
+              </div>
+            );
+          })}
         </div>
-        <div className="flex gap-2 sm:gap-3 md:gap-4 justify-center flex-wrap p-3 sm:p-4 md:p-5 bg-green-100 rounded-lg border-2 border-green-300">
-          {options.map((option, idx) => (
-            <div
-              key={idx}
-              onClick={() => setSelectedAnswer(option)}
-              className={cn(
-                'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 border-green-600 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl cursor-pointer bg-white transition-all hover:scale-110 hover:shadow-lg',
-                selectedAnswer === option && 'border-green-700 bg-green-100 ring-2 ring-green-400'
-              )}
-            >
-              {option}
-            </div>
-          ))}
+        <div className="space-y-2">
+          <p className="text-center text-xs sm:text-sm text-green-700 font-semibold">
+            {selectedAnswer ? '✅ Respuesta seleccionada' : '📦 Arrastra una opción aquí 👆'}
+          </p>
+          <div className="flex gap-2 sm:gap-3 md:gap-4 justify-center flex-wrap p-3 sm:p-4 md:p-5 bg-green-100 rounded-lg border-2 border-green-300">
+            {options.map((option, idx) => {
+              const isSelected = selectedAnswer === option;
+              const isDragging = draggedOption === option;
+              return (
+                <div
+                  key={idx}
+                  draggable={!isSelected}
+                  onDragStart={(e) => !isSelected && handleDragStart(e, option)}
+                  className={cn(
+                    'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 border-green-600 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white transition-all flex-shrink-0',
+                    isSelected
+                      ? 'border-green-700 bg-green-100 ring-2 ring-green-400 opacity-50 cursor-not-allowed'
+                      : cn(
+                          'cursor-grab active:cursor-grabbing hover:scale-110 hover:shadow-lg',
+                          isDragging && 'opacity-50 scale-90'
+                        )
+                  )}
+                >
+                  {option}
+                </div>
+              );
+            })}
+          </div>
+          {!selectedAnswer && (
+            <p className="text-xs text-green-600 text-center italic px-2">
+              💡 Arrastra un número desde abajo hasta la casilla con "?"
+            </p>
+          )}
         </div>
       </div>
     );
