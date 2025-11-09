@@ -102,32 +102,32 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-green-700 via-emerald-700 to-teal-800 p-5 relative overflow-hidden" style={{
+    <main className="min-h-screen bg-gradient-to-br from-green-700 via-emerald-700 to-teal-800 p-2 sm:p-3 md:p-5 relative overflow-hidden" style={{
       backgroundImage: `url("data:image/svg+xml,%3Csvg width='120' height='120' xmlns='http://www.w3.org/2000/svg'%3E%3Ctext x='60' y='80' font-size='80' text-anchor='middle' opacity='0.1'%3E🌳%3C/text%3E%3Ctext x='30' y='40' font-size='40' text-anchor='middle' opacity='0.08'%3E🍃%3C/text%3E%3Ctext x='90' y='100' font-size='30' text-anchor='middle' opacity='0.08'%3E🌿%3C/text%3E%3C/svg%3E")`,
       backgroundSize: '150px 150px'
     }}>
-      {/* Elementos decorativos del bosque */}
-      <div className="absolute top-10 left-10 text-6xl opacity-20 animate-wiggle">🌲</div>
-      <div className="absolute top-20 right-20 text-5xl opacity-15">🌳</div>
-      <div className="absolute bottom-20 left-20 text-4xl opacity-20 animate-wiggle">🍃</div>
-      <div className="absolute bottom-10 right-10 text-5xl opacity-15">🌿</div>
+      {/* Elementos decorativos del bosque - ocultos en móvil */}
+      <div className="hidden md:block absolute top-10 left-10 text-6xl opacity-20 animate-wiggle">🌲</div>
+      <div className="hidden md:block absolute top-20 right-20 text-5xl opacity-15">🌳</div>
+      <div className="hidden md:block absolute bottom-20 left-20 text-4xl opacity-20 animate-wiggle">🍃</div>
+      <div className="hidden md:block absolute bottom-10 right-10 text-5xl opacity-15">🌿</div>
       
-      <div className="max-w-7xl mx-auto bg-white/98 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden border-4 border-green-500 relative z-10">
-        <header className="bg-gradient-to-r from-green-600 via-emerald-600 to-green-500 text-white p-6 text-center relative overflow-hidden">
+      <div className="max-w-7xl mx-auto bg-white/98 backdrop-blur-sm rounded-xl sm:rounded-2xl md:rounded-3xl shadow-2xl overflow-hidden border-2 sm:border-4 border-green-500 relative z-10">
+        <header className="bg-gradient-to-r from-green-600 via-emerald-600 to-green-500 text-white p-3 sm:p-4 md:p-6 text-center relative overflow-hidden">
           <div className="absolute inset-0 opacity-15" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' xmlns='http://www.w3.org/2000/svg'%3E%3Ctext x='40' y='55' font-size='50' text-anchor='middle'%3E🌲%3C/text%3E%3C/svg%3E")`,
             backgroundSize: '80px 80px'
           }}></div>
           <div className="relative z-10">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 drop-shadow-lg flex items-center justify-center gap-3 flex-wrap">
-              <span className="text-5xl">🌲</span>
-              <span>Aventura en el Bosque de los Desafíos</span>
-              <span className="text-5xl">🌲</span>
+            <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold mb-2 sm:mb-3 md:mb-4 drop-shadow-lg flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
+              <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl">🌲</span>
+              <span className="leading-tight">Aventura en el Bosque de los Desafíos</span>
+              <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl">🌲</span>
             </h1>
-            <div className="flex flex-wrap justify-between items-center gap-4 mt-4">
-              <div className="flex items-center gap-3 bg-white/25 rounded-lg px-4 py-2 backdrop-blur-md border-2 border-white/30 shadow-lg">
-                <span className="text-3xl">{game.currentPlayer?.icon || '🐰'}</span>
-                <span className="text-xl font-bold">
+            <div className="flex flex-col sm:flex-row flex-wrap justify-between items-center gap-2 sm:gap-3 md:gap-4 mt-2 sm:mt-3 md:mt-4">
+              <div className="flex items-center gap-2 sm:gap-3 bg-white/25 rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 backdrop-blur-md border-2 border-white/30 shadow-lg">
+                <span className="text-xl sm:text-2xl md:text-3xl">{game.currentPlayer?.icon || '🐰'}</span>
+                <span className="text-sm sm:text-base md:text-lg lg:text-xl font-bold">
                   {game.currentPlayer
                     ? game.gameMode === 'teams'
                       ? `${game.teams[game.currentTeamIndex]?.name} - ${game.currentPlayer.name}`
@@ -135,7 +135,7 @@ export default function Home() {
                     : 'Conejo'}
                 </span>
               </div>
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-1 sm:gap-2">
                 <div 
                   onClick={handleRollDice}
                   className={`cursor-pointer ${(!game.gameStarted || game.diceRolled) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform'}`}
@@ -146,24 +146,24 @@ export default function Home() {
                     onRollComplete={handleDiceRollComplete}
                   />
                 </div>
-                    <Button
-                      onClick={handleRollDice}
-                      disabled={!game.gameStarted || game.diceRolled}
-                      className="text-sm px-4 py-2 bg-white text-green-600 hover:bg-green-50 font-bold shadow-lg border-2 border-green-300 hover:scale-105 transition-transform"
-                    >
-                      {game.diceRolled ? (game.diceValue ? `Valor: ${game.diceValue}` : 'Lanzando...') : 'Lanzar Dado'}
-                    </Button>
+                <Button
+                  onClick={handleRollDice}
+                  disabled={!game.gameStarted || game.diceRolled}
+                  className="text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-white text-green-600 hover:bg-green-50 font-bold shadow-lg border-2 border-green-300 hover:scale-105 transition-transform w-full sm:w-auto"
+                >
+                  {game.diceRolled ? (game.diceValue ? `Valor: ${game.diceValue}` : 'Lanzando...') : 'Lanzar Dado'}
+                </Button>
               </div>
             </div>
           </div>
         </header>
 
-        <div className="p-6">
-          <div className="flex flex-col lg:flex-row gap-6">
-            <div className="flex-1">
+        <div className="p-2 sm:p-3 md:p-4 lg:p-6">
+          <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 md:gap-6">
+            <div className="flex-1 min-w-0 overflow-x-auto">
               <GameBoard players={game.players} challengeCells={game.challengeCells} />
             </div>
-            <div className="lg:w-80">
+            <div className="lg:w-80 w-full">
               <PlayerList
                 players={game.players}
                 teams={game.teams}

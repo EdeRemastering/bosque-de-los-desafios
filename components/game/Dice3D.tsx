@@ -16,15 +16,19 @@ function Dice({ value, isRolling, onRollComplete }: Dice3DProps) {
   const rollTimeRef = useRef(0);
   const animationCompletedRef = useRef(false);
   const displayedValueRef = useRef<number | null>(null);
+  const isRotatingToFinalRef = useRef(false);
+  const finalRotationRef = useRef<{ x: number; y: number; z: number } | null>(null);
 
-  // Mapeo de valores a rotaciones que muestran ese número en la cara frontal
+  // Mapeo de valores a rotaciones que muestran ese número en la cara frontal (Z+)
+  // Ajustadas para que el número siempre se vea claramente desde la cámara
+  // La cámara está en [2.5, 2.5, 2.5], así que la cara frontal (Z+) es la mejor orientada
   const valueToRotation: Record<number, { x: number; y: number; z: number }> = {
-    1: { x: 0, y: 0, z: 0 },
-    2: { x: 0, y: Math.PI / 2, z: 0 },
-    3: { x: -Math.PI / 2, y: 0, z: 0 },
-    4: { x: Math.PI / 2, y: 0, z: 0 },
-    5: { x: 0, y: -Math.PI / 2, z: 0 },
-    6: { x: Math.PI, y: 0, z: 0 },
+    1: { x: 0, y: 0, z: 0 }, // Cara frontal (Z+) - 1 punto al centro
+    2: { x: 0, y: -Math.PI / 2, z: 0 }, // Rotar para mostrar cara con 2 puntos (X-)
+    3: { x: Math.PI / 2, y: 0, z: 0 }, // Rotar para mostrar cara superior (Y+)
+    4: { x: -Math.PI / 2, y: 0, z: 0 }, // Rotar para mostrar cara inferior (Y-)
+    5: { x: 0, y: Math.PI / 2, z: 0 }, // Rotar para mostrar cara con 5 puntos (X+)
+    6: { x: 0, y: Math.PI, z: 0 }, // Rotar 180° para mostrar cara trasera (Z-)
   };
 
   useEffect(() => {
@@ -43,6 +47,8 @@ function Dice({ value, isRolling, onRollComplete }: Dice3DProps) {
     if (isRolling) {
       displayedValueRef.current = null;
       animationCompletedRef.current = false;
+      isRotatingToFinalRef.current = false;
+      finalRotationRef.current = null;
       rollTimeRef.current = 0;
     }
   }, [value, isRolling]);
@@ -58,25 +64,16 @@ function Dice({ value, isRolling, onRollComplete }: Dice3DProps) {
       meshRef.current.rotation.y += delta * 12 + Math.cos(rollTimeRef.current * 7) * 2;
       meshRef.current.rotation.z += delta * 8 + Math.sin(rollTimeRef.current * 3) * 1.5;
 
-      // Después de 2 segundos, detener la animación
+      // Después de 2 segundos, comenzar a rotar hacia la posición final
       if (rollTimeRef.current >= 2.0) {
         animationCompletedRef.current = true;
+        isRotatingToFinalRef.current = true;
         
-        // Cuando termine, si tenemos un valor, rotar hacia él
+        // Cuando termine, si tenemos un valor, establecer la rotación objetivo
         if (value !== null) {
           const rotation = valueToRotation[value];
           if (rotation) {
-            // Animación suave hacia la rotación final
-            const targetX = rotation.x;
-            const targetY = rotation.y;
-            const targetZ = rotation.z;
-            
-            // Interpolar suavemente hacia la rotación objetivo
-            const lerpFactor = 0.1;
-            meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, targetX, lerpFactor);
-            meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, targetY, lerpFactor);
-            meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, targetZ, lerpFactor);
-            
+            finalRotationRef.current = rotation;
             displayedValueRef.current = value;
           }
         }
@@ -84,8 +81,46 @@ function Dice({ value, isRolling, onRollComplete }: Dice3DProps) {
         if (onRollComplete) {
           setTimeout(() => {
             onRollComplete();
-          }, 500);
+          }, 1500); // Aumentar el tiempo para que termine la animación de rotación
         }
+      }
+    } else if (isRotatingToFinalRef.current && finalRotationRef.current && meshRef.current) {
+      // Animación suave hacia la rotación final usando easing
+      const targetX = finalRotationRef.current.x;
+      const targetY = finalRotationRef.current.y;
+      const targetZ = finalRotationRef.current.z;
+      
+      // Normalizar ángulos para evitar rotaciones innecesarias (ej: rotar 270° en lugar de -90°)
+      const normalizeAngle = (current: number, target: number): number => {
+        let diff = target - current;
+        // Normalizar a [-π, π]
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        return diff;
+      };
+      
+      const diffX = normalizeAngle(meshRef.current.rotation.x, targetX);
+      const diffY = normalizeAngle(meshRef.current.rotation.y, targetY);
+      const diffZ = normalizeAngle(meshRef.current.rotation.z, targetZ);
+      
+      // Usar un lerp factor más alto para una animación más rápida y suave
+      const lerpFactor = Math.min(0.15, 1); // Más rápido para llegar a la posición final
+      
+      meshRef.current.rotation.x += diffX * lerpFactor;
+      meshRef.current.rotation.y += diffY * lerpFactor;
+      meshRef.current.rotation.z += diffZ * lerpFactor;
+      
+      // Verificar si estamos lo suficientemente cerca de la rotación objetivo
+      const threshold = 0.01; // Umbral muy pequeño para precisión
+      if (Math.abs(diffX) < threshold && 
+          Math.abs(diffY) < threshold && 
+          Math.abs(diffZ) < threshold) {
+        // Establecer la rotación exacta
+        meshRef.current.rotation.x = targetX;
+        meshRef.current.rotation.y = targetY;
+        meshRef.current.rotation.z = targetZ;
+        isRotatingToFinalRef.current = false;
+        finalRotationRef.current = null;
       }
     } else if (!isRolling && value !== null && displayedValueRef.current !== value) {
       // Asegurar que mostramos el valor correcto cuando no estamos rodando
@@ -95,6 +130,8 @@ function Dice({ value, isRolling, onRollComplete }: Dice3DProps) {
         meshRef.current.rotation.y = rotation.y;
         meshRef.current.rotation.z = rotation.z;
         displayedValueRef.current = value;
+        isRotatingToFinalRef.current = false;
+        finalRotationRef.current = null;
       }
     }
   });
@@ -142,46 +179,12 @@ function Dice({ value, isRolling, onRollComplete }: Dice3DProps) {
         <meshStandardMaterial color="#ffffff" />
       </mesh>
 
-      {/* Renderizar los puntos en la cara visible */}
+      {/* Renderizar los puntos en la cara frontal (Z+) después de la rotación */}
+      {/* Después de rotar el dado, siempre renderizamos en la cara frontal (Z+) */}
       {visibleFace !== null && (
-        <>
-          {/* Cara 1 (frente - Z positivo) */}
-          {visibleFace === 1 && (
-            <group position={[0, 0, 0.5]} rotation={[0, 0, 0]}>
-              {renderDots(1)}
-            </group>
-          )}
-          {/* Cara 2 (abajo - Y negativo) */}
-          {visibleFace === 2 && (
-            <group position={[0, -0.5, 0]} rotation={[Math.PI / 2, 0, 0]}>
-              {renderDots(2)}
-            </group>
-          )}
-          {/* Cara 3 (derecha - X positivo) */}
-          {visibleFace === 3 && (
-            <group position={[0.5, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
-              {renderDots(3)}
-            </group>
-          )}
-          {/* Cara 4 (izquierda - X negativo) */}
-          {visibleFace === 4 && (
-            <group position={[-0.5, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
-              {renderDots(4)}
-            </group>
-          )}
-          {/* Cara 5 (arriba - Y positivo) */}
-          {visibleFace === 5 && (
-            <group position={[0, 0.5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              {renderDots(5)}
-            </group>
-          )}
-          {/* Cara 6 (atrás - Z negativo) */}
-          {visibleFace === 6 && (
-            <group position={[0, 0, -0.5]} rotation={[Math.PI, 0, 0]}>
-              {renderDots(6)}
-            </group>
-          )}
-        </>
+        <group position={[0, 0, 0.5]} rotation={[0, 0, 0]}>
+          {renderDots(visibleFace)}
+        </group>
       )}
     </group>
   );
@@ -189,7 +192,7 @@ function Dice({ value, isRolling, onRollComplete }: Dice3DProps) {
 
 export function Dice3D({ value, isRolling, onRollComplete }: Dice3DProps) {
   return (
-    <div className="w-32 h-32 relative bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg border-2 border-green-300 shadow-lg">
+    <div className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 relative bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg border-2 border-green-300 shadow-lg">
       <Canvas camera={{ position: [2.5, 2.5, 2.5], fov: 60 }} gl={{ antialias: true }}>
         <ambientLight intensity={0.6} />
         <directionalLight position={[5, 5, 5]} intensity={0.8} />

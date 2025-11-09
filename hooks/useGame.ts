@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { toast } from 'sonner';
 import { Player, Team, Difficulty, GameMode, Challenge } from '@/lib/types';
-import { BOARD_SIZE, FOREST_CHARACTERS, FOREST_COLORS, TIME_LIMITS, generateRandomChallengeCells } from '@/lib/game-config';
+import { BOARD_SIZE, FOREST_CHARACTERS, FOREST_COLORS, generateRandomChallengeCells } from '@/lib/game-config';
 import { generateChallenge, selectRandomChallenges, generateSpecificChallenge, PredefinedChallenge } from '@/lib/challenge-generator';
 
 export function useGame() {
@@ -15,7 +16,7 @@ export function useGame() {
   const [diceRolled, setDiceRolled] = useState(false);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [gameMode, setGameMode] = useState<GameMode>('individual');
-  const [timeLimitEnabled, setTimeLimitEnabled] = useState(false);
+  const [selectedTimeLimit, setSelectedTimeLimit] = useState<number | null>(null);
   const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(60);
   const [diceValue, setDiceValue] = useState<number | null>(null);
@@ -264,7 +265,7 @@ export function useGame() {
     playerCount: number,
     difficultyLevel: Difficulty,
     mode: GameMode,
-    timeLimit: boolean,
+    timeLimit: number | null,
     playerCharacters: string[] = []
   ) => {
     // Generar posiciones aleatorias para los desafíos
@@ -300,7 +301,7 @@ export function useGame() {
     setPlayers(newPlayers);
     setDifficulty(difficultyLevel);
     setGameMode(mode);
-    setTimeLimitEnabled(timeLimit);
+    setSelectedTimeLimit(timeLimit);
 
     if (mode === 'teams') {
       const teamNames = ['Equipo Verde', 'Equipo Esmeralda'];
@@ -336,31 +337,52 @@ export function useGame() {
   }, []);
 
   const startChallengeTimer = useCallback(() => {
-    if (!timeLimitEnabled) return;
+    if (selectedTimeLimit === null) return;
 
-    const timeLimit = TIME_LIMITS[difficulty];
-    setTimeRemaining(timeLimit);
-
+    // Limpiar cualquier timer anterior
     if (timerRef.current) {
       clearInterval(timerRef.current);
+      timerRef.current = null;
     }
 
+    // Iniciar el timer que cuenta hacia atrás
     timerRef.current = setInterval(() => {
       setTimeRemaining(prev => {
         if (prev <= 0) {
           if (timerRef.current) {
             clearInterval(timerRef.current);
+            timerRef.current = null;
           }
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-  }, [timeLimitEnabled, difficulty]);
+  }, [selectedTimeLimit]);
+  
+  // Ref para evitar que se ejecute múltiples veces cuando el tiempo llega a 0
+  const timeExpiredHandledRef = useRef(false);
 
   useEffect(() => {
-    if (currentChallenge && timeLimitEnabled) {
+    if (currentChallenge && selectedTimeLimit !== null) {
+      // Reiniciar el tiempo cada vez que se abre un nuevo desafío
+      // Esto asegura que cada desafío comience con el tiempo completo seleccionado
+      setTimeRemaining(selectedTimeLimit);
+      // Resetear el flag de tiempo expirado cuando se abre un nuevo desafío
+      timeExpiredHandledRef.current = false;
       startChallengeTimer();
+    } else if (!currentChallenge) {
+      // Si no hay desafío, detener el timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      // Resetear el tiempo cuando se cierra el desafío para el próximo
+      if (selectedTimeLimit !== null) {
+        setTimeRemaining(selectedTimeLimit);
+      }
+      // Resetear el flag cuando se cierra el desafío
+      timeExpiredHandledRef.current = false;
     }
 
     return () => {
@@ -368,7 +390,7 @@ export function useGame() {
         clearInterval(timerRef.current);
       }
     };
-  }, [currentChallenge, timeLimitEnabled, startChallengeTimer]);
+  }, [currentChallenge, selectedTimeLimit, startChallengeTimer]);
 
   const getCurrentPlayer = useCallback((): Player | null => {
     if (!gameStarted) return null;
@@ -391,6 +413,12 @@ export function useGame() {
   }, []);
 
   const completeChallenge = useCallback((success: boolean) => {
+    // Detener el timer antes de cerrar el desafío
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
     // Cerrar el desafío actual primero
     closeChallenge();
     
@@ -479,6 +507,35 @@ export function useGame() {
     }
   }, [getCurrentPlayer, closeChallenge, nextTurn, difficulty]);
 
+  // Efecto para manejar cuando el tiempo llega a 0
+  // Debe estar después de la definición de completeChallenge
+  useEffect(() => {
+    // Solo ejecutar si el tiempo llegó a 0, hay un desafío activo, hay tiempo límite configurado
+    // y aún no se ha manejado este evento de tiempo expirado
+    if (timeRemaining === 0 && currentChallenge && selectedTimeLimit !== null && !timeExpiredHandledRef.current) {
+      // Marcar que ya se manejó este evento para evitar múltiples ejecuciones
+      timeExpiredHandledRef.current = true;
+      
+      // Detener el timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      // Mostrar toast de tiempo agotado
+      toast.error('⏰ Tiempo agotado', {
+        description: 'No has completado el desafío a tiempo. No puedes avanzar.',
+        duration: 4000,
+      });
+      
+      // Cerrar el desafío y continuar con el siguiente turno (sin avanzar)
+      // Usar un pequeño delay para que el usuario vea el toast
+      setTimeout(() => {
+        completeChallenge(false);
+      }, 500);
+    }
+  }, [timeRemaining, currentChallenge, selectedTimeLimit, completeChallenge]);
+
   return {
     players,
     teams,
@@ -490,7 +547,8 @@ export function useGame() {
     diceValue,
     difficulty,
     gameMode,
-    timeLimitEnabled,
+    timeLimitEnabled: selectedTimeLimit !== null,
+    timeLimit: selectedTimeLimit,
     currentChallenge,
     timeRemaining,
     challengeCells,

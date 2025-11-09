@@ -11,13 +11,17 @@ interface AnimatedPlayerTokenProps {
   cellSize: number;
   boardRef: React.RefObject<HTMLDivElement | null>;
   columns: number;
+  playersInCell: number;
+  indexInCell: number;
 }
 
 export function AnimatedPlayerToken({ 
   player, 
   cellSize, 
   boardRef, 
-  columns 
+  columns,
+  playersInCell,
+  indexInCell
 }: AnimatedPlayerTokenProps) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isAnimating, setIsAnimating] = useState(false);
@@ -28,8 +32,8 @@ export function AnimatedPlayerToken({
   const initializedRef = useRef(false);
   const isAnimatingRef = useRef(false);
 
-  // Calcular posición de una celda en el grid
-  const getCellPosition = (cellIndex: number) => {
+  // Calcular posición de una celda en el grid con offset para múltiples jugadores
+  const getCellPosition = (cellIndex: number, offsetX: number = 0, offsetY: number = 0) => {
     const row = Math.floor(cellIndex / columns);
     const col = cellIndex % columns;
     
@@ -43,8 +47,8 @@ export function AnimatedPlayerToken({
         const cellRect = cellElement.getBoundingClientRect();
         const boardContainerRect = boardRef.current.parentElement.getBoundingClientRect();
         return {
-          x: cellRect.left - boardContainerRect.left + cellRect.width / 2,
-          y: cellRect.top - boardContainerRect.top + cellRect.height / 2,
+          x: cellRect.left - boardContainerRect.left + cellRect.width / 2 + offsetX,
+          y: cellRect.top - boardContainerRect.top + cellRect.height / 2 + offsetY,
         };
       }
     }
@@ -56,16 +60,67 @@ export function AnimatedPlayerToken({
     const padding = 20; // padding del contenedor
     
     return {
-      x: padding + col * cellWidth + cellWidth / 2,
-      y: padding + row * cellHeight + cellHeight / 2,
+      x: padding + col * cellWidth + cellWidth / 2 + offsetX,
+      y: padding + row * cellHeight + cellHeight / 2 + offsetY,
+    };
+  };
+
+  // Calcular offset para posicionar jugadores lado a lado
+  const getPlayerOffset = (playersInCell: number, indexInCell: number) => {
+    if (playersInCell === 1) {
+      return { offsetX: 0, offsetY: 0 };
+    }
+    
+    // Si hay 2 jugadores, colocarlos lado a lado horizontalmente
+    if (playersInCell === 2) {
+      const spacing = cellSize * 0.3; // Espacio entre jugadores
+      return {
+        offsetX: indexInCell === 0 ? -spacing / 2 : spacing / 2,
+        offsetY: 0
+      };
+    }
+    
+    // Si hay 3 jugadores, formar un triángulo
+    if (playersInCell === 3) {
+      const spacing = cellSize * 0.25;
+      if (indexInCell === 0) {
+        return { offsetX: 0, offsetY: -spacing / 2 };
+      } else if (indexInCell === 1) {
+        return { offsetX: -spacing / 2, offsetY: spacing / 2 };
+      } else {
+        return { offsetX: spacing / 2, offsetY: spacing / 2 };
+      }
+    }
+    
+    // Si hay 4 jugadores, formar un cuadrado
+    if (playersInCell === 4) {
+      const spacing = cellSize * 0.22;
+      if (indexInCell === 0) {
+        return { offsetX: -spacing / 2, offsetY: -spacing / 2 };
+      } else if (indexInCell === 1) {
+        return { offsetX: spacing / 2, offsetY: -spacing / 2 };
+      } else if (indexInCell === 2) {
+        return { offsetX: -spacing / 2, offsetY: spacing / 2 };
+      } else {
+        return { offsetX: spacing / 2, offsetY: spacing / 2 };
+      }
+    }
+    
+    // Para más de 4, usar un patrón circular
+    const angle = (indexInCell / playersInCell) * 2 * Math.PI;
+    const radius = cellSize * 0.2;
+    return {
+      offsetX: Math.cos(angle) * radius,
+      offsetY: Math.sin(angle) * radius
     };
   };
 
   // Inicializar posición solo una vez al montar
   useEffect(() => {
     if (!initializedRef.current) {
-      // Inicializar posición sin animación
-      const initialPos = getCellPosition(player.position);
+      // Inicializar posición sin animación con offset
+      const offset = getPlayerOffset(playersInCell, indexInCell);
+      const initialPos = getCellPosition(player.position, offset.offsetX, offset.offsetY);
       setPosition(initialPos);
       // IMPORTANTE: Inicializar prevPositionRef con la posición actual del jugador
       prevPositionRef.current = player.position;
@@ -105,10 +160,11 @@ export function AnimatedPlayerToken({
       ? newPosition - oldPosition  // Avanzar hacia adelante
       : oldPosition - newPosition; // Retroceder (no debería pasar en este juego)
     
-    // Validación: si steps es 0, no hay movimiento
+    // Validación: si steps es 0, no hay movimiento (pero puede haber cambio de offset si otros jugadores se movieron)
     if (steps === 0) {
       prevPositionRef.current = currentPlayerPosition;
-      const finalPos = getCellPosition(currentPlayerPosition);
+      const offset = getPlayerOffset(playersInCell, indexInCell);
+      const finalPos = getCellPosition(currentPlayerPosition, offset.offsetX, offset.offsetY);
       setPosition(finalPos);
       return;
     }
@@ -179,8 +235,13 @@ export function AnimatedPlayerToken({
         // Asegurar que estamos dentro del rango válido del tablero
         if (currentCellIndex >= 0 && currentCellIndex < BOARD_SIZE &&
             nextCellIndex >= 0 && nextCellIndex < BOARD_SIZE) {
-          const startCellPos = getCellPosition(currentCellIndex);
-          const endCellPos = getCellPosition(nextCellIndex);
+          // Durante la animación, no usar offset (centrado)
+          // Solo aplicar offset al final cuando el jugador llegue a su posición final
+          const startCellPos = getCellPosition(currentCellIndex, 0, 0);
+          // Si es el último paso, aplicar offset, sino no
+          const isLastStep = currentStepIndex === steps - 1;
+          const finalOffset = isLastStep ? getPlayerOffset(playersInCell, indexInCell) : { offsetX: 0, offsetY: 0 };
+          const endCellPos = getCellPosition(nextCellIndex, finalOffset.offsetX, finalOffset.offsetY);
           
           // Aplicar easing y efectos según el tipo de animación
           let easedProgress = stepProgress;
@@ -221,8 +282,9 @@ export function AnimatedPlayerToken({
         
         animationRef.current = requestAnimationFrame(animateStep);
       } else {
-        // Animación completada - establecer posición final exacta
-        const finalPos = getCellPosition(newPosition);
+        // Animación completada - establecer posición final exacta con offset
+        const offset = getPlayerOffset(playersInCell, indexInCell);
+        const finalPos = getCellPosition(newPosition, offset.offsetX, offset.offsetY);
         setPosition(finalPos);
         setIsAnimating(false);
         isAnimatingRef.current = false;
@@ -241,7 +303,17 @@ export function AnimatedPlayerToken({
       }
       isAnimatingRef.current = false;
     };
-  }, [player.position, player.icon, cellSize, columns]);
+  }, [player.position, player.icon, cellSize, columns, playersInCell, indexInCell]);
+  
+  // Actualizar posición cuando cambie el número de jugadores en la celda o el índice
+  // (solo si no está animando)
+  useEffect(() => {
+    if (initializedRef.current && !isAnimatingRef.current && !isAnimating) {
+      const offset = getPlayerOffset(playersInCell, indexInCell);
+      const currentPos = getCellPosition(player.position, offset.offsetX, offset.offsetY);
+      setPosition(currentPos);
+    }
+  }, [playersInCell, indexInCell, player.position, isAnimating]);
 
   return (
     <div

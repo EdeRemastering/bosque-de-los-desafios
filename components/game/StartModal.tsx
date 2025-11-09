@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -29,7 +30,7 @@ interface StartModalProps {
     playerCount: number, 
     difficulty: Difficulty, 
     mode: GameMode, 
-    timeLimit: boolean,
+    timeLimit: number | null,
     playerCharacters: string[]
   ) => void;
 }
@@ -43,7 +44,8 @@ export function StartModal({ open, onStart }: StartModalProps) {
   const [playerCount, setPlayerCount] = useState(2);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [mode, setMode] = useState<GameMode>('individual');
-  const [timeLimit, setTimeLimit] = useState(false);
+  const [timeLimitEnabled, setTimeLimitEnabled] = useState(false);
+  const [timeLimit, setTimeLimit] = useState<number>(30); // Tiempo por defecto: 30 segundos
   const [currentPlayerSelecting, setCurrentPlayerSelecting] = useState(1);
   const [playerSelections, setPlayerSelections] = useState<CharacterSelection[]>([]);
 
@@ -119,20 +121,29 @@ export function StartModal({ open, onStart }: StartModalProps) {
       }
       
       if (missingPlayers.length > 0) {
-        alert(`Por favor, todos los jugadores deben seleccionar un personaje. Faltan: Jugador ${missingPlayers.join(', Jugador ')}.`);
+        toast.error('Faltan jugadores por seleccionar', {
+          description: `Por favor, todos los jugadores deben seleccionar un personaje. Faltan: Jugador ${missingPlayers.join(', Jugador ')}.`,
+          duration: 4000,
+        });
         return;
       }
       
       // Verificar que todos los personajes sean únicos
       const uniqueCharacters = new Set(playerSelections.map(s => s.emoji));
       if (uniqueCharacters.size < playerCount) {
-        alert('Por favor, selecciona personajes diferentes para cada jugador');
+        toast.error('Personajes duplicados', {
+          description: 'Por favor, selecciona personajes diferentes para cada jugador',
+          duration: 4000,
+        });
         return;
       }
 
       // Verificar que el número de selecciones coincide con el número de jugadores
       if (playerSelections.length !== playerCount) {
-        alert(`Error: Se esperaban ${playerCount} selecciones, pero se encontraron ${playerSelections.length}. Por favor, reinicia las selecciones.`);
+        toast.error('Error en las selecciones', {
+          description: `Se esperaban ${playerCount} selecciones, pero se encontraron ${playerSelections.length}. Por favor, reinicia las selecciones.`,
+          duration: 4000,
+        });
         return;
       }
 
@@ -141,7 +152,7 @@ export function StartModal({ open, onStart }: StartModalProps) {
         .sort((a, b) => a.playerNumber - b.playerNumber)
         .map(s => s.emoji);
       
-      onStart(playerCount, difficulty, mode, timeLimit, sortedSelections);
+      onStart(playerCount, difficulty, mode, timeLimitEnabled ? timeLimit : null, sortedSelections);
     }
   };
 
@@ -276,16 +287,42 @@ export function StartModal({ open, onStart }: StartModalProps) {
             </Select>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="time-limit"
-              checked={timeLimit}
-              onCheckedChange={(checked) => setTimeLimit(checked === true)}
-              className="border-green-400"
-            />
-            <Label htmlFor="time-limit" className="text-base cursor-pointer text-green-800">
-              Activar tiempo límite para desafíos
-            </Label>
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="time-limit"
+                checked={timeLimitEnabled}
+                onCheckedChange={(checked) => setTimeLimitEnabled(checked === true)}
+                className="border-green-400"
+              />
+              <Label htmlFor="time-limit" className="text-base cursor-pointer text-green-800">
+                Activar tiempo límite para desafíos
+              </Label>
+            </div>
+            
+            {timeLimitEnabled && (
+              <div className="space-y-2 pl-7">
+                <Label htmlFor="time-limit-select" className="text-sm text-green-800 font-semibold">
+                  Tiempo límite:
+                </Label>
+                <Select 
+                  value={timeLimit.toString()} 
+                  onValueChange={(value) => setTimeLimit(parseInt(value))}
+                >
+                  <SelectTrigger id="time-limit-select" className="border-green-300">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 segundos (Nivel Difícil)</SelectItem>
+                    <SelectItem value="20">20 segundos (Nivel Medio Difícil)</SelectItem>
+                    <SelectItem value="30">30 segundos (Nivel Normal)</SelectItem>
+                    <SelectItem value="40">40 segundos (Nivel Medio Fácil)</SelectItem>
+                    <SelectItem value="50">50 segundos (Nivel Fácil)</SelectItem>
+                    <SelectItem value="60">60 segundos (Nivel Facilísimo)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <Button 
