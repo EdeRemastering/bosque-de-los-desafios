@@ -278,10 +278,17 @@ export function ChallengeModal({
 
     // Manejar el inicio del arrastre desde las opciones
     const handleDragStartFromOptions = (e: React.DragEvent, option: string) => {
-      e.dataTransfer.setData('text/plain', option);
-      e.dataTransfer.setData('source', 'options');
-      e.dataTransfer.effectAllowed = 'move';
+      // Establecer el estado primero
       setDraggedOption(option);
+      // Luego establecer los datos del dataTransfer
+      try {
+        e.dataTransfer.setData('text/plain', option);
+        e.dataTransfer.setData('source', 'options');
+        e.dataTransfer.effectAllowed = 'move';
+      } catch (error) {
+        // Algunos navegadores pueden tener problemas con setData
+        console.warn('Error setting drag data:', error);
+      }
       if (e.currentTarget instanceof HTMLElement) {
         e.currentTarget.style.opacity = '0.5';
       }
@@ -289,10 +296,17 @@ export function ChallengeModal({
 
     // Manejar el inicio del arrastre desde la respuesta seleccionada
     const handleDragStartFromAnswer = (e: React.DragEvent, answer: string) => {
-      e.dataTransfer.setData('text/plain', answer);
-      e.dataTransfer.setData('source', 'answer');
-      e.dataTransfer.effectAllowed = 'move';
+      // Establecer el estado primero
       setDraggedOption(answer);
+      // Luego establecer los datos del dataTransfer
+      try {
+        e.dataTransfer.setData('text/plain', answer);
+        e.dataTransfer.setData('source', 'answer');
+        e.dataTransfer.effectAllowed = 'move';
+      } catch (error) {
+        // Algunos navegadores pueden tener problemas con setData
+        console.warn('Error setting drag data:', error);
+      }
       if (e.currentTarget instanceof HTMLElement) {
         e.currentTarget.style.opacity = '0.5';
       }
@@ -301,23 +315,45 @@ export function ChallengeModal({
     // Manejar cuando se arrastra sobre la zona de drop
     const handleDragOver = (e: React.DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
       setDropZoneHovered(true);
     };
 
     // Manejar cuando se sale de la zona de drop
-    const handleDragLeave = () => {
-      setDropZoneHovered(false);
+    const handleDragLeave = (e: React.DragEvent) => {
+      // Verificar que realmente salimos del elemento (no solo movimos sobre un hijo)
+      const currentTarget = e.currentTarget as HTMLElement;
+      const relatedTarget = e.relatedTarget as HTMLElement;
+      if (!currentTarget.contains(relatedTarget)) {
+        setDropZoneHovered(false);
+      }
     };
 
     // Manejar cuando se suelta en la zona de drop
     const handleDrop = (e: React.DragEvent) => {
       e.preventDefault();
-      const option = e.dataTransfer.getData('text/plain');
-      const source = e.dataTransfer.getData('source');
-      
-      if (source === 'options' || source === 'answer') {
-        setSelectedAnswer(option);
+      e.stopPropagation();
+      try {
+        // Intentar obtener los datos del dataTransfer
+        let option = e.dataTransfer.getData('text/plain');
+        let source = e.dataTransfer.getData('source');
+        
+        // Si no hay datos en dataTransfer (algunos navegadores), usar el estado
+        if (!option && draggedOption) {
+          option = draggedOption;
+          source = 'options'; // Asumir que viene de opciones si no hay source
+        }
+        
+        // Verificar que tenemos datos válidos
+        if (option && (source === 'options' || source === 'answer' || !source)) {
+          setSelectedAnswer(option);
+        }
+      } catch (error) {
+        // Si hay error, intentar usar el estado directamente
+        if (draggedOption) {
+          setSelectedAnswer(draggedOption);
+        }
       }
       
       setDraggedOption(null);
@@ -327,10 +363,15 @@ export function ChallengeModal({
     // Manejar cuando se suelta en la zona de opciones (para devolver la respuesta)
     const handleDropOnOptions = (e: React.DragEvent) => {
       e.preventDefault();
-      const source = e.dataTransfer.getData('source');
-      
-      if (source === 'answer') {
-        setSelectedAnswer(null);
+      e.stopPropagation();
+      try {
+        const source = e.dataTransfer.getData('source');
+        
+        if (source === 'answer') {
+          setSelectedAnswer(null);
+        }
+      } catch (error) {
+        console.error('Error en handleDropOnOptions:', error);
       }
       
       setDraggedOption(null);
@@ -370,9 +411,9 @@ export function ChallengeModal({
                   draggable={!!isSelectedCell}
                   onDragStart={isSelectedCell ? (e) => handleDragStartFromAnswer(e, selectedAnswer) : undefined}
                   onDragEnd={isSelectedCell ? handleDragEnd : undefined}
-                  onDragOver={isDropZone ? handleDragOver : undefined}
+                  onDragOver={isDropZone ? handleDragOver : (e) => e.preventDefault()}
                   onDragLeave={isDropZone ? handleDragLeave : undefined}
-                  onDrop={isDropZone ? handleDrop : undefined}
+                  onDrop={isDropZone ? handleDrop : (e) => e.preventDefault()}
                   className={cn(
                     'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 border-2 rounded-lg flex items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-white shadow-sm transition-all touch-none',
                     isDropZone && !selectedAnswer
@@ -407,15 +448,13 @@ export function ChallengeModal({
             )}
             onDragOver={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               if (selectedAnswer) {
                 e.dataTransfer.dropEffect = 'move';
-                setDropZoneHovered(true);
               }
             }}
-            onDragLeave={() => {
-              if (selectedAnswer) {
-                setDropZoneHovered(false);
-              }
+            onDragLeave={(e) => {
+              // No hacer nada especial aquí
             }}
             onDrop={handleDropOnOptions}
           >

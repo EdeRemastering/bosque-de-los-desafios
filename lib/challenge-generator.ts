@@ -553,7 +553,7 @@ const challenge14: PredefinedChallenge = {
   }
 };
 
-// RETO 15: Secuencia alternada (patrón ABAB)
+// RETO 15: Secuencia alternada (patrón ABAB) - Solo números
 const challenge15: PredefinedChallenge = {
   id: 'seq-alternating',
   name: 'Secuencia Alternada',
@@ -564,33 +564,32 @@ const challenge15: PredefinedChallenge = {
       return challenge1.generate(difficulty);
     }
     
-    const options = [
-      { items: ['🔴', '🔵'], name: 'Rojo y Azul' },
-      { items: ['🟡', '🟢'], name: 'Amarillo y Verde' },
-      { items: ['🍎', '🍌'], name: 'Manzana y Plátano' },
-      { items: ['🐶', '🐱'], name: 'Perro y Gato' },
-      { items: ['1️⃣', '2️⃣'], name: 'Uno y Dos' },
-    ];
+    // Solo usar números para secuencias alternadas
+    const num1 = randomInt(1, 5);
+    const num2 = randomInt(num1 + 1, Math.min(num1 + 3, 10));
+    const items = [getNumberEmoji(num1), getNumberEmoji(num2)];
     
-    const selected = options[randomInt(0, options.length - 1)];
     let length: number;
     if (difficulty === 'medium') {
-      // 5-6 años: secuencia alternada de 3 elementos (A,B,A,?)
+      // 5-6 años: secuencia alternada de 3 elementos (1,2,1,?)
       length = 3;
     } else {
-      // 6+ años: secuencia alternada más larga (A,B,A,B,?)
+      // 6+ años: secuencia alternada más larga (1,2,1,2,?)
       length = 4;
     }
     
-    const pattern = Array.from({ length }, (_, i) => selected.items[i % 2]);
-    const next = selected.items[length % 2];
-    const wrongOptions = selected.items.filter(item => item !== next);
-    const allOptions = [next, ...wrongOptions, '🟠'].slice(0, 3).sort(() => Math.random() - 0.5);
+    const pattern = Array.from({ length }, (_, i) => items[i % 2]);
+    const next = items[length % 2];
+    const wrongOptions = items.filter(item => item !== next);
+    // Agregar una opción incorrecta adicional
+    const wrongNum = next === items[0] ? num2 + 1 : num1 - 1;
+    const wrongOption = getNumberEmoji(Math.max(1, Math.min(10, wrongNum)));
+    const allOptions = [next, ...wrongOptions, wrongOption].slice(0, 3).sort(() => Math.random() - 0.5);
     
     return {
       type: 'sequence',
       title: '🎯 Secuencia Alternada',
-      content: '¿Qué sigue en la secuencia?',
+      content: '¿Qué número sigue?',
       solution: next,
       pattern: [...pattern, '?'],
       options: allOptions,
@@ -903,45 +902,72 @@ export function generateClassificationChallenge(difficulty: Difficulty): Classif
 }
 
 export function generateSequenceChallenge(difficulty: Difficulty): SequenceChallenge {
-  const easySequences = [
-    { pattern: ['1️⃣', '2️⃣', '?'], answer: '3️⃣', options: ['3️⃣', '4️⃣', '5️⃣'] },
-    { pattern: ['🟥', '🟦', '?'], answer: '🟥', options: ['🟥', '🟩', '🟨'] },
-    { pattern: ['⭐', '⭐⭐', '?'], answer: '⭐⭐⭐', options: ['⭐⭐⭐', '⭐', '⭐⭐'] }
-  ];
-  
-  const mediumSequences = [
-    { pattern: ['1️⃣', '2️⃣', '3️⃣', '?'], answer: '4️⃣', options: ['4️⃣', '5️⃣', '6️⃣'] },
-    { pattern: ['🟥', '🟦', '🟥', '?'], answer: '🟦', options: ['🟦', '🟩', '🟨'] },
-    { pattern: ['⭐', '⭐⭐', '⭐⭐⭐', '?'], answer: '⭐⭐⭐⭐', options: ['⭐⭐⭐⭐', '⭐', '⭐⭐'] },
-    { pattern: ['🔴', '🔵', '🟢', '?'], answer: '🟡', options: ['🟡', '🟠', '🟣'] }
-  ];
-  
-  const hardSequences = [
-    { pattern: ['1️⃣', '3️⃣', '5️⃣', '?'], answer: '7️⃣', options: ['7️⃣', '6️⃣', '8️⃣'] },
-    { pattern: ['🟥', '🟦', '🟥', '🟦', '?'], answer: '🟥', options: ['🟥', '🟦', '🟩'] },
-    { pattern: ['⭐', '⭐⭐', '⭐', '⭐⭐', '?'], answer: '⭐', options: ['⭐', '⭐⭐', '⭐⭐⭐'] },
-    { pattern: ['🔴', '🟡', '🔵', '🟡', '?'], answer: '🔴', options: ['🔴', '🟡', '🔵'] },
-    { pattern: ['1️⃣', '2️⃣', '4️⃣', '5️⃣', '?'], answer: '7️⃣', options: ['7️⃣', '6️⃣', '8️⃣'] }
-  ];
-  
-  let sequences;
+  // Solo usar secuencias numéricas - los colores se usan solo para clasificación
+  let start: number, length: number;
   if (difficulty === 'easy') {
-    sequences = easySequences;
+    // 4-5 años: secuencias muy simples (1,2,?) o (2,3,?)
+    start = randomInt(1, 3);
+    length = 2;
   } else if (difficulty === 'medium') {
-    sequences = mediumSequences;
+    // 5-6 años: secuencias un poco más largas (1,2,3,?) o (2,3,4,?)
+    start = randomInt(1, 4);
+    length = 3;
   } else {
-    sequences = hardSequences;
+    // 6+ años: secuencias más largas (1,2,3,4,?) o secuencias de pares/impares
+    const useAdvanced = Math.random() > 0.5;
+    if (useAdvanced) {
+      // Secuencia de pares o impares
+      const isEven = Math.random() > 0.5;
+      if (isEven) {
+        start = randomInt(2, 4);
+        length = 3;
+        const pattern = Array.from({ length }, (_, i) => getNumberEmoji(start + i * 2));
+        const next = start + length * 2;
+        const answer = getNumberEmoji(next > 10 ? 10 : next);
+        const options = [answer, getNumberEmoji(Math.min(10, next + 1)), getNumberEmoji(Math.max(1, next - 2))].sort(() => Math.random() - 0.5);
+        return {
+          type: 'sequence',
+          title: '🎯 Secuencia de Pares',
+          content: '¿Qué número sigue?',
+          solution: answer,
+          pattern: [...pattern, '?'],
+          options: options,
+        } as SequenceChallenge & { pattern: string[]; options: string[] };
+      } else {
+        start = randomInt(1, 3);
+        length = 3;
+        const pattern = Array.from({ length }, (_, i) => getNumberEmoji(start + i * 2));
+        const next = start + length * 2;
+        const answer = getNumberEmoji(next > 10 ? 10 : next);
+        const options = [answer, getNumberEmoji(Math.min(10, next + 1)), getNumberEmoji(Math.max(1, next - 2))].sort(() => Math.random() - 0.5);
+        return {
+          type: 'sequence',
+          title: '🎯 Secuencia de Impares',
+          content: '¿Qué número sigue?',
+          solution: answer,
+          pattern: [...pattern, '?'],
+          options: options,
+        } as SequenceChallenge & { pattern: string[]; options: string[] };
+      }
+    } else {
+      // Secuencia normal ascendente
+      start = randomInt(1, 5);
+      length = 4;
+    }
   }
   
-  const selected = sequences[Math.floor(Math.random() * sequences.length)];
+  const pattern = Array.from({ length }, (_, i) => getNumberEmoji(start + i));
+  const next = start + length;
+  const answer = getNumberEmoji(next);
+  const options = [answer, getNumberEmoji(next + 1), getNumberEmoji(next - 1)].sort(() => Math.random() - 0.5);
   
   return {
     type: 'sequence',
-    title: '🎯 Desafío de Secuencia',
-    content: '',
-    solution: selected.answer,
-    pattern: selected.pattern,
-    options: selected.options,
+    title: '🎯 Secuencia Numérica',
+    content: '¿Qué número sigue?',
+    solution: answer,
+    pattern: [...pattern, '?'],
+    options: options,
   } as SequenceChallenge & { pattern: string[]; options: string[] };
 }
 
